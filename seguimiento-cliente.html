@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Seguimiento de tu pedido — Nexus</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --ink:#14110D; --ink-soft:#1C1712; --ink-softer:#241E17;
+    --paper:#F4EFE4; --paper-dim:#C9C2B4;
+    --rust:#C6703C; --teal:#1F9E8C; --gold:#E8B93D; --bad:#D9534F; --purple:#9B7ED9;
+    --slate:#9A9184; --line:rgba(244,239,228,0.10); --radius:18px;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+    --sans:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{ background:var(--ink); color:var(--paper); font-family:var(--sans); -webkit-font-smoothing:antialiased; min-height:100vh; }
+  a{color:inherit;} button{font:inherit; cursor:pointer;}
+  h1,h2,h3{font-family:var(--mono); font-weight:800;}
+
+  header{ padding:26px 20px 18px; text-align:center; border-bottom:1px solid var(--line); }
+  header .brand{ display:flex; align-items:center; justify-content:center; gap:9px; font-family:var(--mono); font-weight:800; font-size:16px; margin-bottom:14px; }
+  header .brand svg{ width:26px; height:26px; }
+  header h1{ font-size:20px; margin-bottom:4px; }
+  header p{ font-size:13.5px; color:var(--paper-dim); }
+
+  main{ max-width:520px; margin:0 auto; padding:22px 18px 60px; }
+
+  .empty-state{ text-align:center; padding:60px 20px; color:var(--slate); }
+  .empty-state svg{ width:40px; height:40px; margin:0 auto 16px; opacity:.5; }
+
+  .sec-title{ font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin:28px 0 12px; }
+  .sec-title:first-child{ margin-top:0; }
+
+  .order-card{ background:var(--ink-soft); border:1px solid var(--line); border-radius:var(--radius); padding:20px; margin-bottom:16px; }
+  .order-card.historial{ opacity:.6; }
+  .order-top{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; }
+  .order-fecha{ font-family:var(--mono); font-size:11.5px; color:var(--slate); }
+  .order-total{ font-family:var(--mono); font-weight:800; font-size:16px; }
+  .order-productos{ font-size:13px; color:var(--paper-dim); margin-bottom:16px; }
+
+  .timeline{ margin:18px 0; }
+  .tl-step{ display:flex; gap:14px; position:relative; padding-bottom:22px; }
+  .tl-step:last-child{ padding-bottom:0; }
+  .tl-step::before{
+    content:""; position:absolute; left:9px; top:22px; bottom:0; width:2px; background:var(--line);
+  }
+  .tl-step:last-child::before{ display:none; }
+  .tl-step.done::before{ background:var(--teal); }
+  .tl-dot{ width:20px; height:20px; border-radius:50%; border:2px solid var(--line); background:var(--ink); flex-shrink:0; display:flex; align-items:center; justify-content:center; z-index:1; }
+  .tl-step.done .tl-dot{ border-color:var(--teal); background:var(--teal); }
+  .tl-step.current .tl-dot{ border-color:var(--gold); box-shadow:0 0 0 4px rgba(232,185,61,0.18); }
+  .tl-dot svg{ width:11px; height:11px; color:var(--ink); }
+  .tl-label{ font-weight:700; font-size:14.5px; padding-top:1px; }
+  .tl-step:not(.done):not(.current) .tl-label{ color:var(--slate); font-weight:500; }
+  .tl-sub{ font-size:12px; color:var(--slate); margin-top:2px; }
+
+  .fecha-box{
+    background:var(--ink-softer); border-radius:12px; padding:12px 14px; font-size:13px;
+    color:var(--paper-dim); margin-top:10px;
+  }
+  .fecha-box b{ color:var(--paper); }
+
+  .sec-title-btn{ display:flex; align-items:center; justify-content:space-between; }
+  .toggle-historial{ font-family:var(--mono); font-size:11px; color:var(--teal); }
+
+  .field{ margin-bottom:16px; }
+  .field label{ display:block; font-family:var(--mono); font-size:11.5px; color:var(--slate); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; }
+  .chip-grid{ display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-bottom:16px; }
+  .chip{ background:var(--ink-soft); border:1.5px solid var(--line); border-radius:14px; padding:14px 10px; text-align:center; font-size:13.5px; font-weight:600; }
+  .chip.active{ border-color:var(--rust); background:rgba(198,112,60,0.12); }
+  .btn-submit{ width:100%; padding:16px; border-radius:14px; background:var(--rust); color:var(--paper); font-weight:700; font-size:15.5px; border:none; }
+  .btn-submit:active{ transform:scale(.98); }
+  .btn-submit:disabled{ opacity:.4; }
+  .reorder-note{ font-size:12.5px; color:var(--slate); margin-bottom:18px; line-height:1.5; }
+  .confirm-box{
+    background:rgba(31,158,140,0.12); border:1px solid rgba(31,158,140,0.35); color:#8fe0d4;
+    padding:14px; border-radius:12px; font-size:13.5px; text-align:center; display:none; margin-bottom:16px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <svg viewBox="0 0 400 400"><rect width="400" height="400" rx="72" fill="#14110D"/><line x1="108" y1="108" x2="292" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><line x1="292" y1="108" x2="108" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><circle cx="108" cy="108" r="27" fill="#C6703C"/><circle cx="292" cy="108" r="27" fill="#C6703C"/><circle cx="108" cy="292" r="27" fill="#C6703C"/><circle cx="292" cy="292" r="27" fill="#C6703C"/><circle cx="200" cy="200" r="33" fill="#C6703C"/></svg>
+    nexus
+  </div>
+  <h1 id="clienteNombre">Tu pedido</h1>
+  <p>Sigue aquí el estado, y pide más cuando quieras.</p>
+</header>
+
+<main>
+  <div id="content">
+    <div class="empty-state">Cargando…</div>
+  </div>
+</main>
+
+<script>
+  const SUPABASE_URL = 'https://wrdeltvlwvbssjituhll.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_yonWTN-t-1RL-_oa6h-0QQ_Bj4MWess';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const ESTADOS = ['pedido','recibido','preparado','reparto','entregado'];
+  const ESTADO_INFO = {
+    pedido:    { label:'Pedido registrado', sub:'Hemos apuntado tu pedido' },
+    recibido:  { label:'Recibido', sub:'Ya nos ha llegado el material' },
+    preparado: { label:'Preparado', sub:'Programado y listo' },
+    reparto:   { label:'En reparto', sub:'De camino a ti' },
+    entregado: { label:'Entregado', sub:'¡Ya lo tienes!' },
+  };
+  const money = n => (Number(n)||0).toLocaleString('es-ES', {style:'currency', currency:'EUR'});
+  const fechaBonita = s => s ? new Date(s+'T00:00:00').toLocaleDateString('es-ES', {day:'numeric', month:'short'}) : '';
+
+  const params = new URLSearchParams(location.search);
+  const CLIENTE = (params.get('cliente') || '').trim();
+  const checkIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
+  let PEDIDOS = [];   // agrupados
+  let PRODUCTOS = [];
+  let productoElegido = null;
+
+  function agrupar(filas){
+    const grupos = new Map();
+    filas.forEach(f => {
+      if (!grupos.has(f.pedido_id)) grupos.set(f.pedido_id, []);
+      grupos.get(f.pedido_id).push(f);
+    });
+    return [...grupos.values()].map(lineas => {
+      const first = lineas[0];
+      return {
+        pedidoId: first.pedido_id,
+        fecha: first.fecha,
+        entregado: first.entregado,
+        estado: first.entregado ? 'entregado' : first.estado,
+        fechaDesde: first.fecha_entrega_desde,
+        fechaHasta: first.fecha_entrega_hasta,
+        notas: first.notas,
+        total: lineas.reduce((s,l) => s + Number(l.precio_venta||0), 0),
+        productos: lineas.map(l => l.producto),
+      };
+    }).sort((a,b) => new Date(b.fecha) - new Date(a.fecha));
+  }
+
+  function renderTimeline(estadoActual){
+    const idx = ESTADOS.indexOf(estadoActual);
+    return ESTADOS.map((e,i) => {
+      const done = i < idx || estadoActual === 'entregado';
+      const current = i === idx && estadoActual !== 'entregado';
+      const info = ESTADO_INFO[e];
+      return `
+      <div class="tl-step ${done ? 'done' : ''} ${current ? 'current' : ''}">
+        <div class="tl-dot">${done ? checkIcon : ''}</div>
+        <div><div class="tl-label">${info.label}</div>${current ? `<div class="tl-sub">${info.sub}</div>` : ''}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderPedidos(){
+    const content = document.getElementById('content');
+    if (!PEDIDOS.length){
+      content.innerHTML = `
+        <div class="empty-state">
+          No encontramos pedidos a nombre de «${CLIENTE}». Si crees que es un error, contacta con nosotros.
+        </div>
+        ${formularioHtml()}`;
+      wireFormulario();
+      return;
+    }
+
+    const enCurso = PEDIDOS.filter(p => !p.entregado);
+    const historial = PEDIDOS.filter(p => p.entregado);
+
+    const cardHtml = (p, hist) => {
+      const rango = p.fechaHasta && p.fechaHasta !== p.fechaDesde
+        ? `${fechaBonita(p.fechaDesde)} — ${fechaBonita(p.fechaHasta)}`
+        : (p.fechaDesde ? fechaBonita(p.fechaDesde) : null);
+      return `
+      <div class="order-card ${hist ? 'historial' : ''}">
+        <div class="order-top">
+          <div class="order-fecha">Pedido del ${fechaBonita(p.fecha)}</div>
+          <div class="order-total">${money(p.total)}</div>
+        </div>
+        <div class="order-productos">${p.productos.join(' · ')}</div>
+        ${hist ? '' : `<div class="timeline">${renderTimeline(p.estado)}</div>`}
+        ${(!hist && rango) ? `<div class="fecha-box">Entrega acordada: <b>${rango}</b></div>` : ''}
+      </div>`;
+    };
+
+    let html = '';
+    if (enCurso.length){
+      html += `<div class="sec-title">En curso</div>` + enCurso.map(p => cardHtml(p, false)).join('');
+    }
+    if (historial.length){
+      html += `<div class="sec-title">Historial</div>` + historial.map(p => cardHtml(p, true)).join('');
+    }
+    html += formularioHtml();
+    content.innerHTML = html;
+    wireFormulario();
+  }
+
+  function formularioHtml(){
+    return `
+      <div class="sec-title">Pedir más</div>
+      <div class="confirm-box" id="confirmBox">✓ Pedido enviado — nos pondremos en contacto para confirmar.</div>
+      <p class="reorder-note">Elige lo que quieres y lo confirmamos contigo — el precio se cierra por WhatsApp o al recogerlo, aquí no hace falta ponerlo.</p>
+      <div class="field"><label>¿Qué te gustaría pedir?</label><div class="chip-grid" id="productoGrid"></div></div>
+      <div class="field"><label>Algún detalle (opcional)</label><input type="text" id="reorderNotas" placeholder="Ej: 2 unidades, el mismo diseño de antes…"
+        style="width:100%; background:var(--ink-soft); border:1px solid var(--line); border-radius:12px; padding:14px 15px; color:var(--paper); font-size:16px;"></div>
+      <button class="btn-submit" id="reorderSubmit">Enviar pedido</button>`;
+  }
+
+  function wireFormulario(){
+    const grid = document.getElementById('productoGrid');
+    grid.innerHTML = PRODUCTOS.map(p => `<div class="chip" data-id="${p.id}">${p.nombre}</div>`).join('');
+    grid.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        grid.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        productoElegido = chip.dataset.id;
+      });
+    });
+    document.getElementById('reorderSubmit').addEventListener('click', enviarReorder);
+  }
+
+  async function enviarReorder(){
+    if (!productoElegido) return alert('Elige qué quieres pedir');
+    const notas = document.getElementById('reorderNotas').value.trim();
+    const btn = document.getElementById('reorderSubmit');
+    btn.disabled = true; btn.textContent = 'Enviando…';
+
+    const { error } = await sb.from('ventas').insert({
+      producto_id: productoElegido,
+      cliente: CLIENTE,
+      precio_venta: 0,
+      socio: 'Cliente',
+      entregado: false,
+      estado: 'pedido',
+      origen: 'cliente',
+      pedido_id: crypto.randomUUID(),
+      notas: notas || 'Pedido a través del seguimiento NFC',
+    });
+
+    btn.disabled = false; btn.textContent = 'Enviar pedido';
+    if (error){ alert('No se pudo enviar: ' + error.message); return; }
+
+    document.getElementById('confirmBox').style.display = 'block';
+    productoElegido = null;
+    document.getElementById('reorderNotas').value = '';
+    cargar();
+  }
+
+  async function cargar(){
+    const [{ data: pedidosRaw, error: e1 }, { data: productos }] = await Promise.all([
+      sb.rpc('obtener_pedidos_cliente', { p_cliente: CLIENTE }),
+      sb.from('productos').select('*').eq('activo', true).order('nombre'),
+    ]);
+    PRODUCTOS = productos || [];
+    PEDIDOS = agrupar(pedidosRaw || []);
+    renderPedidos();
+  }
+
+  if (!CLIENTE){
+    document.getElementById('content').innerHTML = '<div class="empty-state">Enlace incompleto — falta el nombre del cliente en la URL.</div>';
+  } else {
+    document.getElementById('clienteNombre').textContent = CLIENTE;
+    cargar();
+    sb.channel('seguimiento-' + CLIENTE)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ventas', filter: `cliente=eq.${CLIENTE}` }, cargar)
+      .subscribe();
+  }
+</script>
+</body>
+</html>
