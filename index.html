@@ -126,6 +126,20 @@
     padding:12px 14px; border-radius:12px; font-size:13px; margin-bottom:16px; display:none;
   }
 
+  .linea-item{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--ink-soft); border:1px solid var(--line); border-radius:12px;
+    padding:12px 14px; margin-bottom:8px;
+  }
+  .linea-item .ln-name{ font-size:14px; font-weight:600; }
+  .linea-item .ln-name span{ font-family:var(--mono); font-size:9.5px; color:var(--purple); margin-left:6px; }
+  .linea-item .ln-right{ display:flex; align-items:center; gap:12px; }
+  .linea-item .ln-price{ font-family:var(--mono); font-weight:700; font-size:14px; color:var(--teal); }
+  .linea-remove{ width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--slate); }
+  .linea-remove:active{ background:rgba(217,83,79,0.15); color:var(--bad); }
+  .linea-remove svg{ width:14px; height:14px; }
+  .lineas-total{ text-align:right; font-family:var(--mono); font-size:12.5px; color:var(--slate); margin:-2px 0 18px; }
+
   .hist-item{
     display:flex; justify-content:space-between; align-items:center; gap:10px;
     padding:13px 4px; border-bottom:1px solid var(--line);
@@ -200,13 +214,19 @@
 
   <section class="view" id="view-vender">
     <h2 style="font-size:19px; margin-bottom:16px;">Registrar venta</h2>
-    <div class="stock-flag" id="stockFlag">⚠ No queda stock para esto. Confirma que aún así quieres registrar la venta.</div>
+    <div class="stock-flag" id="stockFlag">⚠ Algo de esto no tiene stock. Confirma que aún así quieres registrar el pedido.</div>
+
+    <div class="field"><label>Cliente</label><input type="text" id="ventaCliente" placeholder="Nombre del negocio o persona"></div>
+
+    <div class="sec-title" style="margin-top:0;">Productos de este pedido</div>
+    <div id="lineasList"></div>
 
     <div class="field"><label>Producto o pack</label>
       <div class="chip-grid" id="ventaProductGrid"></div>
     </div>
-    <div class="field"><label>Cliente</label><input type="text" id="ventaCliente" placeholder="Nombre del negocio o persona"></div>
-    <div class="field"><label>Precio de venta (€)</label><input type="number" step="0.01" id="ventaPrecio" placeholder="0.00" inputmode="decimal"></div>
+    <div class="field"><label>Precio de este producto (€)</label><input type="number" step="0.01" id="ventaPrecio" placeholder="0.00" inputmode="decimal"></div>
+    <button class="btn-submit" id="addLineaBtn" style="background:var(--ink-softer); border:1.5px dashed var(--line); margin-bottom:22px;">+ Añadir otro producto al pedido</button>
+
     <div class="field"><label>Notas (opcional)</label><input type="text" id="ventaNotas" placeholder="Ej: link personalizado peluquería"></div>
 
     <div class="field"><label>Entrega</label>
@@ -378,6 +398,56 @@
     document.getElementById('entregaFechas').style.display = (val === 'pendiente') ? 'block' : 'none';
   });
 
+  // ---- líneas del pedido actual (varios productos, mismo cliente) ----
+  let lineasVenta = [];
+
+  function renderLineas(){
+    const el = document.getElementById('lineasList');
+    if (!lineasVenta.length){ el.innerHTML = ''; document.getElementById('lineasTotal')?.remove(); return; }
+    el.innerHTML = lineasVenta.map((l, i) => `
+      <div class="linea-item">
+        <div class="ln-name">${l.nombre}${l.tipo==='pack' ? '<span>PACK</span>' : ''}</div>
+        <div class="ln-right">
+          <div class="ln-price">${money(l.precio)}</div>
+          <button class="linea-remove" data-i="${i}" aria-label="Quitar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+    `).join('') + `<div class="lineas-total" id="lineasTotal">Total del pedido: ${money(lineasVenta.reduce((s,l)=>s+l.precio,0))}</div>`;
+
+    el.querySelectorAll('.linea-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        lineasVenta.splice(Number(btn.dataset.i), 1);
+        renderLineas();
+      });
+    });
+  }
+
+  function tomarLineaActual(){
+    // devuelve {productoId, nombre, tipo, precio} de lo que hay elegido ahora
+    // mismo en el picker, o null si no hay nada válido que añadir
+    const precio = parseFloat(document.getElementById('ventaPrecio').value);
+    if (!ventaProductoId || isNaN(precio) || precio < 0) return null;
+    const producto = PRODUCTOS.find(p => p.id === ventaProductoId);
+    return { productoId: ventaProductoId, nombre: producto?.nombre || '—', tipo: producto?.tipo, precio };
+  }
+
+  function limpiarPickerProducto(){
+    document.querySelectorAll('#ventaProductGrid .chip').forEach(c => c.classList.remove('active'));
+    document.getElementById('ventaPrecio').value = '';
+    ventaProductoId = null;
+    document.getElementById('stockFlag').style.display = 'none';
+  }
+
+  document.getElementById('addLineaBtn').addEventListener('click', () => {
+    const linea = tomarLineaActual();
+    if (!linea){ alert('Elige un producto y pon su precio antes de añadirlo'); return; }
+    lineasVenta.push(linea);
+    renderLineas();
+    limpiarPickerProducto();
+  });
+
   let PRODUCTOS = [];
   let STOCK = [];
   let PACKS = [];
@@ -491,11 +561,11 @@
 
   function renderPendientes(){
     const list = document.getElementById('pendientesList');
-    const atrasados = PENDIENTES.filter(p => p.atrasado).length;
+    const total = PENDIENTES.length;
 
     const badge = document.getElementById('pendientesBadge');
-    if (atrasados > 0){
-      badge.textContent = atrasados;
+    if (total > 0){
+      badge.textContent = total;
       badge.style.display = 'flex';
     } else {
       badge.style.display = 'none';
@@ -531,46 +601,51 @@
 
   document.getElementById('ventaSubmit').addEventListener('click', async () => {
     const cliente = document.getElementById('ventaCliente').value.trim();
-    const precio = parseFloat(document.getElementById('ventaPrecio').value);
     const notas = document.getElementById('ventaNotas').value.trim();
     const entrega = entregaSel();
     const fechaDesde = document.getElementById('fechaDesde').value || null;
     const fechaHasta = document.getElementById('fechaHasta').value || null;
 
-    if (!ventaProductoId) return alert('Elige un producto o pack');
+    // si hay un producto elegido en el picker pero no se le dio a "+ Añadir",
+    // se cuenta igualmente como una línea más — así el caso normal de un
+    // solo producto no obliga a pulsar dos botones
+    const suelta = tomarLineaActual();
+    const lineas = suelta ? [...lineasVenta, suelta] : lineasVenta;
+
+    if (!lineas.length) return alert('Añade al menos un producto al pedido');
     if (!cliente) return alert('Escribe el nombre del cliente');
-    if (isNaN(precio) || precio < 0) return alert('Precio no válido');
     if (entrega === 'pendiente' && !fechaDesde) return alert('Pon la fecha acordada con el cliente');
     if (!SOCIO) return askName();
 
-    const producto = PRODUCTOS.find(p => p.id === ventaProductoId);
-    const sinStock = producto?.tipo === 'pack'
-      ? (PACKS.find(x => x.id === ventaProductoId)?.montables_ahora ?? 0) <= 0
-      : (STOCK.find(x => x.id === ventaProductoId)?.stock_actual ?? 0) <= 0;
-    if (sinStock && !confirm('No queda stock para esto. ¿Registrar la venta igualmente?')) return;
+    const sinStock = lineas.filter(l => {
+      return l.tipo === 'pack'
+        ? (PACKS.find(x => x.id === l.productoId)?.montables_ahora ?? 0) <= 0
+        : (STOCK.find(x => x.id === l.productoId)?.stock_actual ?? 0) <= 0;
+    });
+    if (sinStock.length && !confirm(`Sin stock para: ${sinStock.map(l=>l.nombre).join(', ')}. ¿Registrar igualmente?`)) return;
 
     const btn = document.getElementById('ventaSubmit');
     btn.disabled = true; btn.textContent = 'Guardando…';
-    const { error } = await sb.from('ventas').insert({
-      producto_id: ventaProductoId, cliente, precio_venta: precio, notas, socio: SOCIO,
+    const filas = lineas.map(l => ({
+      producto_id: l.productoId, cliente, precio_venta: l.precio, notas, socio: SOCIO,
       entregado: entrega !== 'pendiente',
       fecha_entrega_desde: entrega === 'pendiente' ? fechaDesde : null,
       fecha_entrega_hasta: entrega === 'pendiente' ? fechaHasta : null,
-    });
+    }));
+    const { error } = await sb.from('ventas').insert(filas);
     btn.disabled = false; btn.textContent = 'Registrar venta';
     if (error){ alert('Error al guardar: ' + error.message); return; }
 
+    lineasVenta = [];
+    renderLineas();
+    limpiarPickerProducto();
     document.getElementById('ventaCliente').value = '';
-    document.getElementById('ventaPrecio').value = '';
     document.getElementById('ventaNotas').value = '';
     document.getElementById('fechaDesde').value = '';
     document.getElementById('fechaHasta').value = '';
-    document.querySelectorAll('#ventaProductGrid .chip').forEach(c => c.classList.remove('active'));
     document.querySelectorAll('#entregaGrid .chip').forEach(c => c.classList.remove('active'));
     document.querySelector('#entregaGrid .chip[data-val="inmediata"]').classList.add('active');
     document.getElementById('entregaFechas').style.display = 'none';
-    ventaProductoId = null;
-    document.getElementById('stockFlag').style.display = 'none';
     document.querySelector('.tab[data-view="inicio"]').click();
   });
 
