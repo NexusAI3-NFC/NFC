@@ -72,6 +72,25 @@
   .pc-metric .l{ font-size:9.5px; color:var(--slate); margin-top:2px; text-transform:uppercase; }
   .pc-stock-warn{ margin-top:10px; font-size:11.5px; color:var(--bad); font-family:var(--mono); }
 
+  .pedido-card{
+    background:var(--ink-soft); border:1px solid var(--line); border-radius:var(--radius);
+    padding:16px 18px; margin-bottom:12px;
+  }
+  .pedido-card.atrasado{ border-color:var(--bad); background:linear-gradient(135deg, rgba(217,83,79,0.10), var(--ink-soft)); }
+  .pedido-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:10px; }
+  .pedido-cliente{ font-weight:700; font-size:15.5px; }
+  .pedido-producto{ font-size:12.5px; color:var(--slate); margin-top:2px; }
+  .pedido-fecha{ font-family:var(--mono); font-size:12.5px; margin-top:10px; color:var(--paper-dim); }
+  .pedido-fecha b{ color:var(--paper); }
+  .pedido-badge{ font-family:var(--mono); font-size:10px; padding:4px 9px; border-radius:20px; font-weight:700; white-space:nowrap; }
+  .pedido-badge.atrasado{ background:rgba(217,83,79,0.18); color:#ff9b96; }
+  .pedido-badge.ok{ background:rgba(31,158,140,0.15); color:var(--teal); }
+  .btn-entregado{
+    width:100%; margin-top:12px; padding:12px; border-radius:10px; border:1px solid var(--teal);
+    background:none; color:var(--teal); font-weight:700; font-size:13.5px;
+  }
+  .btn-entregado:active{ background:rgba(31,158,140,0.15); }
+
   .field{ margin-bottom:16px; }
   .field label{ display:block; font-family:var(--mono); font-size:11.5px; color:var(--slate); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; }
   .field input, .field select{
@@ -189,6 +208,18 @@
     <div class="field"><label>Cliente</label><input type="text" id="ventaCliente" placeholder="Nombre del negocio o persona"></div>
     <div class="field"><label>Precio de venta (€)</label><input type="number" step="0.01" id="ventaPrecio" placeholder="0.00" inputmode="decimal"></div>
     <div class="field"><label>Notas (opcional)</label><input type="text" id="ventaNotas" placeholder="Ej: link personalizado peluquería"></div>
+
+    <div class="field"><label>Entrega</label>
+      <div class="chip-grid" id="entregaGrid">
+        <div class="chip active" data-val="inmediata">Inmediata</div>
+        <div class="chip" data-val="pendiente">Pendiente de entregar</div>
+      </div>
+    </div>
+    <div id="entregaFechas" style="display:none;">
+      <div class="field"><label>Fecha acordada</label><input type="date" id="fechaDesde"></div>
+      <div class="field"><label>Hasta (opcional, si es un rango)</label><input type="date" id="fechaHasta"></div>
+    </div>
+
     <button class="btn-submit teal" id="ventaSubmit">Registrar venta</button>
   </section>
 
@@ -249,6 +280,11 @@
     <div id="historialList"></div>
   </section>
 
+  <section class="view" id="view-pendientes">
+    <h2 style="font-size:19px; margin-bottom:14px;">Pendientes de entregar</h2>
+    <div id="pendientesList"></div>
+  </section>
+
 </main>
 
 <nav class="tabbar">
@@ -263,6 +299,11 @@
   <button class="tab" data-view="gasto">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3v4M8 3v4M2 11h20"/></svg>
     <span>Cartera</span>
+  </button>
+  <button class="tab" data-view="pendientes" style="position:relative;">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+    <span>Pendientes</span>
+    <span id="pendientesBadge" style="display:none; position:absolute; top:2px; right:14px; background:var(--bad); color:#fff; font-size:9px; font-family:var(--mono); font-weight:800; min-width:15px; height:15px; border-radius:8px; align-items:center; justify-content:center;"></span>
   </button>
   <button class="tab" data-view="historial">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
@@ -316,14 +357,16 @@
     });
   });
 
-  function wireChipSelect(containerId){
+  function wireChipSelect(containerId, onChange){
     const el = document.getElementById(containerId);
-    let selected = null;
+    const preActive = el.querySelector('.chip.active');
+    let selected = preActive ? preActive.dataset.val : null;
     el.querySelectorAll('.chip').forEach(chip => {
       chip.addEventListener('click', () => {
         el.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
         selected = chip.dataset.val;
+        if (onChange) onChange(selected);
       });
     });
     return () => selected;
@@ -331,29 +374,37 @@
   const proveedorSel = wireChipSelect('proveedorGrid');
   const categoriaSel = wireChipSelect('categoriaGrid');
   const ahorroTipoSel = wireChipSelect('ahorroTipoGrid');
+  const entregaSel = wireChipSelect('entregaGrid', val => {
+    document.getElementById('entregaFechas').style.display = (val === 'pendiente') ? 'block' : 'none';
+  });
 
   let PRODUCTOS = [];
   let STOCK = [];
   let PACKS = [];
   let GLOBAL = null;
+  let PENDIENTES = [];
   const money = n => (Number(n)||0).toLocaleString('es-ES', {style:'currency', currency:'EUR'});
+  const fechaBonita = s => s ? new Date(s+'T00:00:00').toLocaleDateString('es-ES', {day:'numeric', month:'short'}) : '';
 
   let ventaProductoId = null;
   let gastoProductoId = null;
 
   async function cargarTodo(){
-    const [{data: productos}, {data: stock}, {data: packs}, {data: global}] = await Promise.all([
+    const [{data: productos}, {data: stock}, {data: packs}, {data: global}, {data: pendientes}] = await Promise.all([
       sb.from('productos').select('*').eq('activo', true).order('nombre'),
       sb.from('resumen_stock').select('*').order('nombre'),
       sb.from('resumen_packs').select('*').order('nombre'),
       sb.from('resumen_global').select('*').single(),
+      sb.from('pedidos_pendientes').select('*').order('fecha_limite', {ascending:true, nullsFirst:false}),
     ]);
     PRODUCTOS = productos || [];
     STOCK = stock || [];
     PACKS = packs || [];
     GLOBAL = global || null;
+    PENDIENTES = pendientes || [];
     renderInicio();
     renderProductGrids();
+    renderPendientes();
     cargarHistorial();
   }
 
@@ -438,14 +489,58 @@
     document.getElementById('stockFlag').style.display = sinStock ? 'block' : 'none';
   }
 
+  function renderPendientes(){
+    const list = document.getElementById('pendientesList');
+    const atrasados = PENDIENTES.filter(p => p.atrasado).length;
+
+    const badge = document.getElementById('pendientesBadge');
+    if (atrasados > 0){
+      badge.textContent = atrasados;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+
+    if (!PENDIENTES.length){ list.innerHTML = '<div class="empty">Nada pendiente de entregar ahora mismo.</div>'; return; }
+
+    list.innerHTML = PENDIENTES.map(p => {
+      const rango = p.fecha_entrega_hasta && p.fecha_entrega_hasta !== p.fecha_entrega_desde
+        ? `${fechaBonita(p.fecha_entrega_desde)} — ${fechaBonita(p.fecha_entrega_hasta)}`
+        : fechaBonita(p.fecha_entrega_desde);
+      return `
+      <div class="pedido-card ${p.atrasado ? 'atrasado' : ''}">
+        <div class="pedido-top">
+          <div><div class="pedido-cliente">${p.cliente}</div><div class="pedido-producto">${p.producto} · ${money(p.precio_venta)} · ${p.socio}</div></div>
+          <span class="pedido-badge ${p.atrasado ? 'atrasado' : 'ok'}">${p.atrasado ? '⚠ Atrasado' : 'En plazo'}</span>
+        </div>
+        <div class="pedido-fecha">Entrega acordada: <b>${rango}</b></div>
+        ${p.notas ? `<div class="pedido-producto" style="margin-top:6px;">${p.notas}</div>` : ''}
+        <button class="btn-entregado" data-id="${p.id}">✓ Marcar como entregado</button>
+      </div>`;
+    }).join('');
+
+    list.querySelectorAll('.btn-entregado').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true; btn.textContent = 'Guardando…';
+        const { error } = await sb.from('ventas').update({ entregado: true }).eq('id', btn.dataset.id);
+        if (error){ alert('Error: ' + error.message); btn.disabled = false; return; }
+        cargarTodo();
+      });
+    });
+  }
+
   document.getElementById('ventaSubmit').addEventListener('click', async () => {
     const cliente = document.getElementById('ventaCliente').value.trim();
     const precio = parseFloat(document.getElementById('ventaPrecio').value);
     const notas = document.getElementById('ventaNotas').value.trim();
+    const entrega = entregaSel();
+    const fechaDesde = document.getElementById('fechaDesde').value || null;
+    const fechaHasta = document.getElementById('fechaHasta').value || null;
 
     if (!ventaProductoId) return alert('Elige un producto o pack');
     if (!cliente) return alert('Escribe el nombre del cliente');
     if (isNaN(precio) || precio < 0) return alert('Precio no válido');
+    if (entrega === 'pendiente' && !fechaDesde) return alert('Pon la fecha acordada con el cliente');
     if (!SOCIO) return askName();
 
     const producto = PRODUCTOS.find(p => p.id === ventaProductoId);
@@ -457,7 +552,10 @@
     const btn = document.getElementById('ventaSubmit');
     btn.disabled = true; btn.textContent = 'Guardando…';
     const { error } = await sb.from('ventas').insert({
-      producto_id: ventaProductoId, cliente, precio_venta: precio, notas, socio: SOCIO
+      producto_id: ventaProductoId, cliente, precio_venta: precio, notas, socio: SOCIO,
+      entregado: entrega !== 'pendiente',
+      fecha_entrega_desde: entrega === 'pendiente' ? fechaDesde : null,
+      fecha_entrega_hasta: entrega === 'pendiente' ? fechaHasta : null,
     });
     btn.disabled = false; btn.textContent = 'Registrar venta';
     if (error){ alert('Error al guardar: ' + error.message); return; }
@@ -465,7 +563,12 @@
     document.getElementById('ventaCliente').value = '';
     document.getElementById('ventaPrecio').value = '';
     document.getElementById('ventaNotas').value = '';
+    document.getElementById('fechaDesde').value = '';
+    document.getElementById('fechaHasta').value = '';
     document.querySelectorAll('#ventaProductGrid .chip').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('#entregaGrid .chip').forEach(c => c.classList.remove('active'));
+    document.querySelector('#entregaGrid .chip[data-val="inmediata"]').classList.add('active');
+    document.getElementById('entregaFechas').style.display = 'none';
     ventaProductoId = null;
     document.getElementById('stockFlag').style.display = 'none';
     document.querySelector('.tab[data-view="inicio"]').click();
