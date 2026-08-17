@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Control NFC — Nexus</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --ink:#14110D; --ink-soft:#1C1712; --ink-softer:#241E17;
+    --paper:#F4EFE4; --paper-dim:#C9C2B4;
+    --rust:#C6703C; --teal:#1F9E8C; --gold:#E8B93D; --bad:#D9534F; --purple:#9B7ED9;
+    --slate:#9A9184; --line:rgba(244,239,228,0.10); --radius:18px;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+    --sans:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--ink); color:var(--paper); font-family:var(--sans);
+    -webkit-font-smoothing:antialiased; padding-bottom:86px; min-height:100vh;
+  }
+  a{color:inherit;} button{font:inherit; cursor:pointer;}
+  h1,h2,h3{font-family:var(--mono); font-weight:800;}
+
+  .topbar{
+    position:sticky; top:0; z-index:20; background:rgba(20,17,13,.92); backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line); padding:16px 18px; display:flex; align-items:center; justify-content:space-between;
+  }
+  .topbar .brand{ display:flex; align-items:center; gap:9px; font-family:var(--mono); font-weight:800; font-size:16px; }
+  .topbar svg{ width:24px; height:24px; }
+  .whoami{
+    font-family:var(--mono); font-size:12px; color:var(--slate); background:var(--ink-soft);
+    border:1px solid var(--line); padding:7px 12px; border-radius:20px; display:flex; align-items:center; gap:6px;
+  }
+
+  main{ max-width:560px; margin:0 auto; padding:18px; }
+  .view{ display:none; } .view.active{ display:block; animation:fadein .25s ease; }
+  @keyframes fadein{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+
+  .live-pill{
+    display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:11.5px;
+    color:var(--teal); margin-bottom:16px;
+  }
+  .live-dot{ width:7px; height:7px; border-radius:50%; background:var(--teal); animation:pulse 1.8s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.3;} }
+
+  .stats-row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+  .stat-box{ background:var(--ink-soft); border:1px solid var(--line); border-radius:14px; padding:14px 10px; text-align:center; }
+  .stat-box .v{ font-family:var(--mono); font-weight:800; font-size:18px; }
+  .stat-box .l{ font-size:10px; color:var(--slate); margin-top:3px; text-transform:uppercase; letter-spacing:.04em; }
+  .stat-box.ahorro{ background:linear-gradient(135deg, rgba(155,126,217,0.16), var(--ink-soft)); border-color:rgba(155,126,217,0.35); }
+  .stat-box.ahorro .v{ color:var(--purple); }
+
+  .sec-title{ font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin:24px 0 10px; }
+
+  .product-card{
+    background:var(--ink-soft); border:1px solid var(--line); border-radius:var(--radius);
+    padding:16px 18px; margin-bottom:12px;
+  }
+  .product-card.pack{ border-style:dashed; }
+  .pc-top{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; }
+  .pc-name{ font-weight:700; font-size:15.5px; display:flex; align-items:center; gap:8px; }
+  .pc-cat{ font-size:11px; color:var(--slate); margin-top:2px; }
+  .pc-tag-pack{ font-family:var(--mono); font-size:9.5px; background:rgba(155,126,217,0.18); color:var(--purple); padding:2px 8px; border-radius:10px; }
+  .pc-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .pc-metric{ text-align:center; }
+  .pc-metric .v{ font-family:var(--mono); font-weight:700; font-size:14.5px; }
+  .pc-metric .v.neg{ color:var(--bad); }
+  .pc-metric .v.pos{ color:var(--teal); }
+  .pc-metric .l{ font-size:9.5px; color:var(--slate); margin-top:2px; text-transform:uppercase; }
+  .pc-stock-warn{ margin-top:10px; font-size:11.5px; color:var(--bad); font-family:var(--mono); }
+
+  .field{ margin-bottom:16px; }
+  .field label{ display:block; font-family:var(--mono); font-size:11.5px; color:var(--slate); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; }
+  .field input, .field select{
+    width:100%; background:var(--ink-soft); border:1px solid var(--line); border-radius:12px;
+    padding:14px 15px; color:var(--paper); font-family:var(--sans); font-size:16px;
+  }
+  .field input:focus, .field select:focus{ outline:none; border-color:var(--rust); }
+
+  .chip-grid{ display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-bottom:16px; }
+  .chip{
+    background:var(--ink-soft); border:1.5px solid var(--line); border-radius:14px; padding:14px 10px;
+    text-align:center; font-size:13.5px; font-weight:600; position:relative;
+  }
+  .chip.active{ border-color:var(--rust); background:rgba(198,112,60,0.12); }
+  .chip.pack::after{ content:"PACK"; position:absolute; top:4px; right:6px; font-family:var(--mono); font-size:8px; color:var(--purple); }
+
+  .type-tabs{ display:flex; gap:8px; margin-bottom:20px; background:var(--ink-soft); padding:5px; border-radius:14px; }
+  .type-tab{ flex:1; text-align:center; padding:10px 6px; border-radius:10px; font-size:13px; font-weight:600; color:var(--slate); }
+  .type-tab.active{ background:var(--rust); color:var(--paper); }
+  .subview{ display:none; } .subview.active{ display:block; }
+
+  .btn-submit{
+    width:100%; padding:16px; border-radius:14px; background:var(--rust); color:var(--paper);
+    font-weight:700; font-size:15.5px; border:none; margin-top:6px;
+  }
+  .btn-submit:active{ transform:scale(.98); }
+  .btn-submit.teal{ background:var(--teal); }
+  .btn-submit.purple{ background:var(--purple); }
+  .btn-submit:disabled{ opacity:.4; }
+
+  .stock-flag{
+    background:rgba(217,83,79,0.12); border:1px solid rgba(217,83,79,0.35); color:#ffb3b0;
+    padding:12px 14px; border-radius:12px; font-size:13px; margin-bottom:16px; display:none;
+  }
+
+  .hist-item{
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+    padding:13px 4px; border-bottom:1px solid var(--line);
+  }
+  .hist-item .type-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .type-dot.venta{ background:var(--teal); } .type-dot.compra{ background:var(--rust); }
+  .type-dot.gasto{ background:var(--gold); } .type-dot.ahorro{ background:var(--purple); }
+  .hist-left{ display:flex; align-items:center; gap:10px; min-width:0; }
+  .hist-text .t1{ font-size:14px; font-weight:600; }
+  .hist-text .t2{ font-size:11.5px; color:var(--slate); }
+  .hist-amt{ font-family:var(--mono); font-weight:700; font-size:14px; white-space:nowrap; }
+  .hist-amt.in{ color:var(--teal); } .hist-amt.out{ color:var(--bad); }
+  .hist-del{
+    width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+    color:var(--slate); flex-shrink:0;
+  }
+  .hist-del:active{ background:rgba(217,83,79,0.15); color:var(--bad); }
+  .hist-del svg{ width:15px; height:15px; }
+
+  nav.tabbar{
+    position:fixed; bottom:0; left:0; right:0; z-index:30;
+    background:rgba(20,17,13,.95); backdrop-filter:blur(10px); border-top:1px solid var(--line);
+    display:flex; padding:8px 6px calc(8px + env(safe-area-inset-bottom));
+  }
+  .tab{
+    flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px;
+    color:var(--slate); border-radius:12px;
+  }
+  .tab.active{ color:var(--paper); }
+  .tab svg{ width:21px; height:21px; }
+  .tab span{ font-size:10px; font-family:var(--mono); font-weight:600; }
+
+  .empty{ text-align:center; padding:40px 20px; color:var(--slate); font-size:14px; }
+
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(20,17,13,.85); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:100; padding:24px;
+  }
+  .modal-box{ background:var(--ink-soft); border:1px solid var(--line); border-radius:20px; padding:26px; max-width:340px; width:100%; }
+  .modal-box h3{ font-size:17px; margin-bottom:8px; }
+  .modal-box p{ font-size:13.5px; color:var(--paper-dim); margin-bottom:18px; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 400 400"><rect width="400" height="400" rx="72" fill="#14110D"/><line x1="108" y1="108" x2="292" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><line x1="292" y1="108" x2="108" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><circle cx="108" cy="108" r="27" fill="#C6703C"/><circle cx="292" cy="108" r="27" fill="#C6703C"/><circle cx="108" cy="292" r="27" fill="#C6703C"/><circle cx="292" cy="292" r="27" fill="#C6703C"/><circle cx="200" cy="200" r="33" fill="#C6703C"/></svg>
+    Control NFC
+  </div>
+  <button class="whoami" id="whoamiBtn">👤 <span id="whoamiName">—</span></button>
+</header>
+
+<main>
+
+  <section class="view active" id="view-inicio">
+    <div class="live-pill"><span class="live-dot"></span> en vivo — los 3 veis lo mismo</div>
+
+    <div class="stats-row">
+      <div class="stat-box"><div class="v" id="totIngresos">—</div><div class="l">Ingresos</div></div>
+      <div class="stat-box"><div class="v" id="totGastos">—</div><div class="l">Gastos totales</div></div>
+      <div class="stat-box"><div class="v" id="totBeneficio">—</div><div class="l">Beneficio</div></div>
+      <div class="stat-box ahorro"><div class="v" id="totAhorro">—</div><div class="l">Ahorro guardado</div></div>
+    </div>
+
+    <div class="sec-title">Stock real (lo que compráis)</div>
+    <div id="stockList"></div>
+
+    <div class="sec-title">Packs (se arman con el stock de arriba)</div>
+    <div id="packList"></div>
+  </section>
+
+  <section class="view" id="view-vender">
+    <h2 style="font-size:19px; margin-bottom:16px;">Registrar venta</h2>
+    <div class="stock-flag" id="stockFlag">⚠ No queda stock para esto. Confirma que aún así quieres registrar la venta.</div>
+
+    <div class="field"><label>Producto o pack</label>
+      <div class="chip-grid" id="ventaProductGrid"></div>
+    </div>
+    <div class="field"><label>Cliente</label><input type="text" id="ventaCliente" placeholder="Nombre del negocio o persona"></div>
+    <div class="field"><label>Precio de venta (€)</label><input type="number" step="0.01" id="ventaPrecio" placeholder="0.00" inputmode="decimal"></div>
+    <div class="field"><label>Notas (opcional)</label><input type="text" id="ventaNotas" placeholder="Ej: link personalizado peluquería"></div>
+    <button class="btn-submit teal" id="ventaSubmit">Registrar venta</button>
+  </section>
+
+  <section class="view" id="view-gasto">
+    <h2 style="font-size:19px; margin-bottom:16px;">Cartera</h2>
+
+    <div class="type-tabs">
+      <div class="type-tab active" data-sub="stock">Compra stock</div>
+      <div class="type-tab" data-sub="general">Gasto general</div>
+      <div class="type-tab" data-sub="ahorro">Ahorro</div>
+    </div>
+
+    <div class="subview active" id="sub-stock">
+      <div class="field"><label>Producto (solo lo que se compra suelto)</label>
+        <div class="chip-grid" id="gastoProductGrid"></div>
+      </div>
+      <div class="field"><label>Proveedor</label>
+        <div class="chip-grid" id="proveedorGrid">
+          <div class="chip" data-val="Amazon">Amazon</div>
+          <div class="chip" data-val="Temu">Temu</div>
+          <div class="chip" data-val="Otro" style="grid-column:span 2;">Otro</div>
+        </div>
+      </div>
+      <div class="field"><label>Cantidad (unidades)</label><input type="number" id="gastoCantidad" placeholder="0" inputmode="numeric"></div>
+      <div class="field"><label>Coste total del lote (€)</label><input type="number" step="0.01" id="gastoCoste" placeholder="0.00" inputmode="decimal"></div>
+      <button class="btn-submit" id="gastoSubmit">Registrar compra</button>
+    </div>
+
+    <div class="subview" id="sub-general">
+      <div class="field"><label>Categoría</label>
+        <div class="chip-grid" id="categoriaGrid">
+          <div class="chip" data-val="Herramientas">Herramientas / Software</div>
+          <div class="chip" data-val="Transporte">Transporte</div>
+          <div class="chip" data-val="Marketing">Marketing</div>
+          <div class="chip" data-val="Otro">Otro</div>
+        </div>
+      </div>
+      <div class="field"><label>Concepto</label><input type="text" id="generalConcepto" placeholder="Ej: dominio aquihayjuegos.es"></div>
+      <div class="field"><label>Importe (€)</label><input type="number" step="0.01" id="generalImporte" placeholder="0.00" inputmode="decimal"></div>
+      <button class="btn-submit" id="generalSubmit">Registrar gasto</button>
+    </div>
+
+    <div class="subview" id="sub-ahorro">
+      <div class="field"><label>Tipo</label>
+        <div class="chip-grid" id="ahorroTipoGrid">
+          <div class="chip" data-val="aportar">Aportar a la hucha</div>
+          <div class="chip" data-val="retirar">Retirar de la hucha</div>
+        </div>
+      </div>
+      <div class="field"><label>Importe (€)</label><input type="number" step="0.01" id="ahorroImporte" placeholder="0.00" inputmode="decimal"></div>
+      <div class="field"><label>Notas (opcional)</label><input type="text" id="ahorroNotas" placeholder="Para qué es"></div>
+      <button class="btn-submit purple" id="ahorroSubmit">Registrar movimiento</button>
+    </div>
+  </section>
+
+  <section class="view" id="view-historial">
+    <h2 style="font-size:19px; margin-bottom:14px;">Historial</h2>
+    <div id="historialList"></div>
+  </section>
+
+</main>
+
+<nav class="tabbar">
+  <button class="tab active" data-view="inicio">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+    <span>Inicio</span>
+  </button>
+  <button class="tab" data-view="vender">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+    <span>Vender</span>
+  </button>
+  <button class="tab" data-view="gasto">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3v4M8 3v4M2 11h20"/></svg>
+    <span>Cartera</span>
+  </button>
+  <button class="tab" data-view="historial">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+    <span>Historial</span>
+  </button>
+</nav>
+
+<script>
+  const SUPABASE_URL = 'https://TU-PROYECTO.supabase.co';
+  const SUPABASE_ANON_KEY = 'TU-ANON-KEY';
+
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  let SOCIO = localStorage.getItem('nexus_socio');
+  function askName(){
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `<div class="modal-box">
+      <h3>¿Quién eres?</h3>
+      <p>Se queda guardado en este móvil, no hace falta volver a escribirlo.</p>
+      <div class="field"><input type="text" id="nameInput" placeholder="Tu nombre"></div>
+      <button class="btn-submit" id="nameSubmit">Continuar</button>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('nameSubmit').onclick = () => {
+      const v = document.getElementById('nameInput').value.trim();
+      if (!v) return;
+      localStorage.setItem('nexus_socio', v);
+      SOCIO = v;
+      document.getElementById('whoamiName').textContent = v;
+      overlay.remove();
+    };
+  }
+  if (!SOCIO) askName(); else document.getElementById('whoamiName').textContent = SOCIO;
+  document.getElementById('whoamiBtn').onclick = askName;
+
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('view-' + tab.dataset.view).classList.add('active');
+    });
+  });
+  document.querySelectorAll('.type-tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.type-tab').forEach(x => x.classList.remove('active'));
+      document.querySelectorAll('.subview').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      document.getElementById('sub-' + t.dataset.sub).classList.add('active');
+    });
+  });
+
+  function wireChipSelect(containerId){
+    const el = document.getElementById(containerId);
+    let selected = null;
+    el.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        el.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        selected = chip.dataset.val;
+      });
+    });
+    return () => selected;
+  }
+  const proveedorSel = wireChipSelect('proveedorGrid');
+  const categoriaSel = wireChipSelect('categoriaGrid');
+  const ahorroTipoSel = wireChipSelect('ahorroTipoGrid');
+
+  let PRODUCTOS = [];
+  let STOCK = [];
+  let PACKS = [];
+  let GLOBAL = null;
+  const money = n => (Number(n)||0).toLocaleString('es-ES', {style:'currency', currency:'EUR'});
+
+  let ventaProductoId = null;
+  let gastoProductoId = null;
+
+  async function cargarTodo(){
+    const [{data: productos}, {data: stock}, {data: packs}, {data: global}] = await Promise.all([
+      sb.from('productos').select('*').eq('activo', true).order('nombre'),
+      sb.from('resumen_stock').select('*').order('nombre'),
+      sb.from('resumen_packs').select('*').order('nombre'),
+      sb.from('resumen_global').select('*').single(),
+    ]);
+    PRODUCTOS = productos || [];
+    STOCK = stock || [];
+    PACKS = packs || [];
+    GLOBAL = global || null;
+    renderInicio();
+    renderProductGrids();
+    cargarHistorial();
+  }
+
+  function renderInicio(){
+    if (GLOBAL){
+      const gastoTotal = Number(GLOBAL.gasto_stock||0) + Number(GLOBAL.gasto_general||0);
+      const beneficio = Number(GLOBAL.ingresos_ventas||0) - gastoTotal;
+      document.getElementById('totIngresos').textContent = money(GLOBAL.ingresos_ventas);
+      document.getElementById('totGastos').textContent = money(gastoTotal);
+      const benEl = document.getElementById('totBeneficio');
+      benEl.textContent = money(beneficio);
+      benEl.style.color = beneficio >= 0 ? 'var(--teal)' : 'var(--bad)';
+      document.getElementById('totAhorro').textContent = money(GLOBAL.ahorro_acumulado);
+    }
+
+    const stockList = document.getElementById('stockList');
+    stockList.innerHTML = !STOCK.length ? '<div class="empty">Sin productos de stock todavía.</div>' : STOCK.map(r => `
+      <div class="product-card">
+        <div class="pc-top">
+          <div><div class="pc-name">${r.nombre}</div><div class="pc-cat">${r.categoria}</div></div>
+        </div>
+        <div class="pc-grid">
+          <div class="pc-metric"><div class="v ${r.stock_actual<0?'neg':''}">${r.stock_actual}</div><div class="l">Stock</div></div>
+          <div class="pc-metric"><div class="v">${money(r.coste_medio_unidad)}</div><div class="l">Coste/ud</div></div>
+          <div class="pc-metric"><div class="v">${r.unidades_vendidas}</div><div class="l">Consumidas</div></div>
+          <div class="pc-metric"><div class="v">${money(r.gasto_total)}</div><div class="l">Gastado</div></div>
+        </div>
+        ${r.stock_actual <= 0 ? '<div class="pc-stock-warn">⚠ Sin stock</div>' : ''}
+      </div>
+    `).join('');
+
+    const packList = document.getElementById('packList');
+    packList.innerHTML = !PACKS.length ? '<div class="empty">Sin packs configurados.</div>' : PACKS.map(r => `
+      <div class="product-card pack">
+        <div class="pc-top">
+          <div><div class="pc-name">${r.nombre} <span class="pc-tag-pack">PACK</span></div><div class="pc-cat">${r.categoria}</div></div>
+        </div>
+        <div class="pc-grid">
+          <div class="pc-metric"><div class="v ${r.montables_ahora<=0?'neg':''}">${r.montables_ahora}</div><div class="l">Montables</div></div>
+          <div class="pc-metric"><div class="v">${r.unidades_vendidas}</div><div class="l">Vendidos</div></div>
+          <div class="pc-metric"><div class="v pos">${money(r.ingreso_total)}</div><div class="l">Ingresos</div></div>
+          <div class="pc-metric"><div class="v">—</div><div class="l">Sin stock propio</div></div>
+        </div>
+        ${r.montables_ahora <= 0 ? '<div class="pc-stock-warn">⚠ No hay stock suficiente en sus componentes</div>' : ''}
+      </div>
+    `).join('');
+  }
+
+  function renderProductGrids(){
+    const elVenta = document.getElementById('ventaProductGrid');
+    elVenta.innerHTML = PRODUCTOS.map(p => `<div class="chip ${p.tipo==='pack'?'pack':''}" data-id="${p.id}">${p.nombre}</div>`).join('');
+    elVenta.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        elVenta.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        ventaProductoId = chip.dataset.id;
+        checkStock(ventaProductoId);
+      });
+    });
+
+    const elGasto = document.getElementById('gastoProductGrid');
+    elGasto.innerHTML = PRODUCTOS.filter(p => p.tipo === 'simple').map(p => `<div class="chip" data-id="${p.id}">${p.nombre}</div>`).join('');
+    elGasto.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        elGasto.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        gastoProductoId = chip.dataset.id;
+      });
+    });
+  }
+
+  function checkStock(productoId){
+    const producto = PRODUCTOS.find(p => p.id === productoId);
+    let sinStock = false;
+    if (producto?.tipo === 'pack'){
+      const r = PACKS.find(x => x.id === productoId);
+      sinStock = !!r && r.montables_ahora <= 0;
+    } else {
+      const r = STOCK.find(x => x.id === productoId);
+      sinStock = !!r && r.stock_actual <= 0;
+    }
+    document.getElementById('stockFlag').style.display = sinStock ? 'block' : 'none';
+  }
+
+  document.getElementById('ventaSubmit').addEventListener('click', async () => {
+    const cliente = document.getElementById('ventaCliente').value.trim();
+    const precio = parseFloat(document.getElementById('ventaPrecio').value);
+    const notas = document.getElementById('ventaNotas').value.trim();
+
+    if (!ventaProductoId) return alert('Elige un producto o pack');
+    if (!cliente) return alert('Escribe el nombre del cliente');
+    if (isNaN(precio) || precio < 0) return alert('Precio no válido');
+    if (!SOCIO) return askName();
+
+    const producto = PRODUCTOS.find(p => p.id === ventaProductoId);
+    const sinStock = producto?.tipo === 'pack'
+      ? (PACKS.find(x => x.id === ventaProductoId)?.montables_ahora ?? 0) <= 0
+      : (STOCK.find(x => x.id === ventaProductoId)?.stock_actual ?? 0) <= 0;
+    if (sinStock && !confirm('No queda stock para esto. ¿Registrar la venta igualmente?')) return;
+
+    const btn = document.getElementById('ventaSubmit');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    const { error } = await sb.from('ventas').insert({
+      producto_id: ventaProductoId, cliente, precio_venta: precio, notas, socio: SOCIO
+    });
+    btn.disabled = false; btn.textContent = 'Registrar venta';
+    if (error){ alert('Error al guardar: ' + error.message); return; }
+
+    document.getElementById('ventaCliente').value = '';
+    document.getElementById('ventaPrecio').value = '';
+    document.getElementById('ventaNotas').value = '';
+    document.querySelectorAll('#ventaProductGrid .chip').forEach(c => c.classList.remove('active'));
+    ventaProductoId = null;
+    document.getElementById('stockFlag').style.display = 'none';
+    document.querySelector('.tab[data-view="inicio"]').click();
+  });
+
+  document.getElementById('gastoSubmit').addEventListener('click', async () => {
+    const cantidad = parseInt(document.getElementById('gastoCantidad').value, 10);
+    const coste = parseFloat(document.getElementById('gastoCoste').value);
+    const proveedor = proveedorSel();
+
+    if (!gastoProductoId) return alert('Elige un producto');
+    if (!proveedor) return alert('Elige un proveedor');
+    if (isNaN(cantidad) || cantidad <= 0) return alert('Cantidad no válida');
+    if (isNaN(coste) || coste < 0) return alert('Coste no válido');
+    if (!SOCIO) return askName();
+
+    const btn = document.getElementById('gastoSubmit');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    const { error } = await sb.from('compras').insert({
+      producto_id: gastoProductoId, proveedor, cantidad, coste_total: coste, socio: SOCIO
+    });
+    btn.disabled = false; btn.textContent = 'Registrar compra';
+    if (error){ alert('Error al guardar: ' + error.message); return; }
+
+    document.getElementById('gastoCantidad').value = '';
+    document.getElementById('gastoCoste').value = '';
+    document.querySelectorAll('#gastoProductGrid .chip, #proveedorGrid .chip').forEach(c => c.classList.remove('active'));
+    gastoProductoId = null;
+    document.querySelector('.tab[data-view="inicio"]').click();
+  });
+
+  document.getElementById('generalSubmit').addEventListener('click', async () => {
+    const categoria = categoriaSel();
+    const concepto = document.getElementById('generalConcepto').value.trim();
+    const importe = parseFloat(document.getElementById('generalImporte').value);
+
+    if (!categoria) return alert('Elige una categoría');
+    if (!concepto) return alert('Describe el gasto');
+    if (isNaN(importe) || importe < 0) return alert('Importe no válido');
+    if (!SOCIO) return askName();
+
+    const btn = document.getElementById('generalSubmit');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    const { error } = await sb.from('gastos_generales').insert({ categoria, concepto, importe, socio: SOCIO });
+    btn.disabled = false; btn.textContent = 'Registrar gasto';
+    if (error){ alert('Error al guardar: ' + error.message); return; }
+
+    document.getElementById('generalConcepto').value = '';
+    document.getElementById('generalImporte').value = '';
+    document.querySelectorAll('#categoriaGrid .chip').forEach(c => c.classList.remove('active'));
+    document.querySelector('.tab[data-view="inicio"]').click();
+  });
+
+  document.getElementById('ahorroSubmit').addEventListener('click', async () => {
+    const tipo = ahorroTipoSel();
+    const importe = parseFloat(document.getElementById('ahorroImporte').value);
+    const notas = document.getElementById('ahorroNotas').value.trim();
+
+    if (!tipo) return alert('Elige aportar o retirar');
+    if (isNaN(importe) || importe <= 0) return alert('Importe no válido');
+    if (!SOCIO) return askName();
+
+    const btn = document.getElementById('ahorroSubmit');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    const { error } = await sb.from('ahorros').insert({ tipo, importe, notas, socio: SOCIO });
+    btn.disabled = false; btn.textContent = 'Registrar movimiento';
+    if (error){ alert('Error al guardar: ' + error.message); return; }
+
+    document.getElementById('ahorroImporte').value = '';
+    document.getElementById('ahorroNotas').value = '';
+    document.querySelectorAll('#ahorroTipoGrid .chip').forEach(c => c.classList.remove('active'));
+    document.querySelector('.tab[data-view="inicio"]').click();
+  });
+
+  const TABLE_BY_TYPE = { venta:'ventas', compra:'compras', gasto:'gastos_generales', ahorro:'ahorros' };
+
+  async function cargarHistorial(){
+    const [{data: ventas}, {data: compras}, {data: generales}, {data: ahorros}] = await Promise.all([
+      sb.from('ventas').select('*, productos(nombre)').order('created_at', {ascending:false}).limit(20),
+      sb.from('compras').select('*, productos(nombre)').order('created_at', {ascending:false}).limit(20),
+      sb.from('gastos_generales').select('*').order('created_at', {ascending:false}).limit(20),
+      sb.from('ahorros').select('*').order('created_at', {ascending:false}).limit(20),
+    ]);
+    const items = [
+      ...(ventas||[]).map(v => ({ id:v.id, type:'venta', dir:'in', nombre:v.productos?.nombre, sub:`${v.cliente} · ${v.socio}`, amt:v.precio_venta, fecha:v.fecha, created_at:v.created_at })),
+      ...(compras||[]).map(c => ({ id:c.id, type:'compra', dir:'out', nombre:c.productos?.nombre, sub:`${c.proveedor} · ${c.cantidad}u · ${c.socio}`, amt:c.coste_total, fecha:c.fecha, created_at:c.created_at })),
+      ...(generales||[]).map(g => ({ id:g.id, type:'gasto', dir:'out', nombre:g.concepto, sub:`${g.categoria} · ${g.socio}`, amt:g.importe, fecha:g.fecha, created_at:g.created_at })),
+      ...(ahorros||[]).map(a => ({ id:a.id, type:'ahorro', dir: a.tipo==='aportar'?'in':'out', nombre: a.tipo==='aportar'?'Aporte a la hucha':'Retiro de la hucha', sub:`${a.notas||''} · ${a.socio}`, amt:a.importe, fecha:a.fecha, created_at:a.created_at })),
+    ].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 40);
+
+    const list = document.getElementById('historialList');
+    if (!items.length){ list.innerHTML = '<div class="empty">Todavía no hay movimientos.</div>'; return; }
+    list.innerHTML = items.map(it => `
+      <div class="hist-item">
+        <div class="hist-left">
+          <span class="type-dot ${it.type}"></span>
+          <div class="hist-text"><div class="t1">${it.nombre || '—'}</div><div class="t2">${it.sub} · ${it.fecha}</div></div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="hist-amt ${it.dir}">${it.dir==='in'?'+':'-'}${money(it.amt)}</div>
+          <button class="hist-del" data-type="${it.type}" data-id="${it.id}" aria-label="Borrar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>
+          </button>
+        </div>
+      </div>
+    `).join('');
+
+    list.querySelectorAll('.hist-del').forEach(btn => {
+      btn.addEventListener('click', () => borrarMovimiento(btn.dataset.type, btn.dataset.id));
+    });
+  }
+
+  async function borrarMovimiento(type, id){
+    const tabla = TABLE_BY_TYPE[type];
+    if (!tabla) return;
+    if (!confirm('¿Borrar este movimiento? El stock y los totales se recalculan solos al borrarlo.')) return;
+    const { error } = await sb.from(tabla).delete().eq('id', id);
+    if (error){ alert('Error al borrar: ' + error.message); return; }
+    cargarTodo(); // refresco inmediato para quien borra; el resto lo recibe por tiempo real
+  }
+
+  sb.channel('cambios-en-vivo')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'ventas' }, cargarTodo)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'compras' }, cargarTodo)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos_generales' }, cargarTodo)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'ahorros' }, cargarTodo)
+    .subscribe();
+
+  cargarTodo();
+</script>
+</body>
+</html>
