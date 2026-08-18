@@ -603,9 +603,9 @@
   const ESTADOS = ['pedido','recibido','preparado','reparto'];
   const ESTADO_LABELS = { pedido:'Pedido', recibido:'Recibido', preparado:'Preparado', reparto:'En reparto' };
 
-  function linkSeguimiento(pedidoId){
+  function linkSeguimiento(clienteNombre){
     const base = location.href.replace(/[^/]*$/, ''); // carpeta actual, funciona igual en local y en GitHub Pages
-    return `${base}seguimiento-pedido.html?pedido=${pedidoId}`;
+    return `${base}seguimiento-cliente.html?cliente=${encodeURIComponent(clienteNombre)}`;
   }
 
   function renderPendientes(){
@@ -663,7 +663,7 @@
           : ''}
 
         <div class="pedido-actions">
-          <button class="btn-link" data-link="${linkSeguimiento(first.pedido_id)}">🔗 Copiar seguimiento</button>
+          <button class="btn-link" data-link="${linkSeguimiento(first.cliente)}">🔗 Copiar seguimiento</button>
           <button class="btn-entregado" data-pedido="${first.pedido_id}">✓ Entregado</button>
         </div>
       </div>`;
