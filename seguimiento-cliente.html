@@ -71,6 +71,25 @@
   .field label{ display:block; font-family:var(--mono); font-size:11.5px; color:var(--slate); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; }
   .chip-grid{ display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-bottom:16px; }
   .chip{ background:var(--ink-soft); border:1.5px solid var(--line); border-radius:14px; padding:14px 10px; text-align:center; font-size:13.5px; font-weight:600; }
+
+  .catalog-grid{ display:flex; flex-direction:column; gap:12px; margin-bottom:18px; }
+  .catalog-card{
+    display:flex; align-items:center; gap:14px; background:var(--ink-soft);
+    border:1.5px solid var(--line); border-radius:16px; padding:12px; cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .catalog-card.active{ border-color:var(--gold); background:var(--ink-softer); }
+  .catalog-photo{
+    position:relative; width:72px; height:72px; border-radius:12px; overflow:hidden; flex-shrink:0;
+    background:var(--ink-softer); display:flex; align-items:center; justify-content:center;
+  }
+  .catalog-photo img{ width:100%; height:100%; object-fit:cover; position:relative; z-index:1; }
+  .catalog-fallback{ position:absolute; width:30px; height:30px; color:var(--gold); opacity:.55; }
+  .catalog-photo:not(.noimg) .catalog-fallback{ display:none; }
+  .catalog-body{ flex:1; min-width:0; }
+  .catalog-name{ font-weight:700; font-size:15px; }
+  .catalog-desc{ font-size:12.5px; color:var(--paper-dim); margin:2px 0 6px; line-height:1.4; }
+  .catalog-price{ font-family:var(--mono); font-weight:700; font-size:14px; color:var(--gold); }
   .chip.active{ border-color:var(--rust); background:rgba(198,112,60,0.12); }
   .btn-submit{ width:100%; padding:16px; border-radius:14px; background:var(--rust); color:var(--paper); font-weight:700; font-size:15.5px; border:none; }
   .btn-submit:active{ transform:scale(.98); }
@@ -202,12 +221,24 @@
     wireFormulario();
   }
 
+  // Catálogo de cara al cliente: solo estos 3, en este orden. El precio
+  // sale siempre de Supabase (PRODUCTOS, ya cargado) — aquí solo va lo
+  // visual. Las fotos las pone el equipo subiendo el archivo con este
+  // mismo nombre a la carpeta assets/ del repo; si no existe todavía,
+  // se ve un icono en su lugar, no un hueco roto.
+  const CATALOGO_ORDEN = ['Cartel', 'Tarjeta', 'Tarjeta Personalizada'];
+  const CATALOGO_META = {
+    'Cartel':                { img: 'assets/cartel.jpg', desc: 'Expositor de sobremesa. Se mantiene de pie solo, sin pilas ni wifi.' },
+    'Tarjeta':                { img: 'assets/tarjeta-resenas.jpg', desc: 'Tarjeta NFC para pedir reseñas de Google en un toque.' },
+    'Tarjeta Personalizada':  { img: 'assets/tarjeta-personalizada.jpg', desc: 'Contacto, redes sociales, tu web o un enlace especial — vosotros elegís.' },
+  };
+
   function formularioHtml(){
     return `
       <div class="sec-title">Pedir más</div>
       <div class="confirm-box" id="confirmBox">✓ Pedido enviado — nos pondremos en contacto para confirmar.</div>
-      <p class="reorder-note">Elige lo que quieres y lo confirmamos contigo — el precio se cierra por WhatsApp o al recogerlo, aquí no hace falta ponerlo.</p>
-      <div class="field"><label>¿Qué te gustaría pedir?</label><div class="chip-grid" id="productoGrid"></div></div>
+      <p class="reorder-note">Elige lo que quieres pedir.</p>
+      <div class="catalog-grid" id="productoGrid"></div>
       <div class="field"><label>Algún detalle (opcional)</label><input type="text" id="reorderNotas" placeholder="Ej: 2 unidades, el mismo diseño de antes…"
         style="width:100%; background:var(--ink-soft); border:1px solid var(--line); border-radius:12px; padding:14px 15px; color:var(--paper); font-size:16px;"></div>
       <button class="btn-submit" id="reorderSubmit">Enviar pedido</button>`;
@@ -215,12 +246,31 @@
 
   function wireFormulario(){
     const grid = document.getElementById('productoGrid');
-    grid.innerHTML = PRODUCTOS.map(p => `<div class="chip" data-id="${p.id}">${p.nombre}</div>`).join('');
-    grid.querySelectorAll('.chip').forEach(chip => {
-      chip.addEventListener('click', () => {
-        grid.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-        chip.classList.add('active');
-        productoElegido = chip.dataset.id;
+    const enCatalogo = CATALOGO_ORDEN
+      .map(nombre => PRODUCTOS.find(p => p.nombre === nombre))
+      .filter(Boolean);
+
+    grid.innerHTML = enCatalogo.map(p => {
+      const meta = CATALOGO_META[p.nombre] || {};
+      return `
+      <div class="catalog-card" data-id="${p.id}">
+        <div class="catalog-photo">
+          <img src="${meta.img}" alt="${p.nombre}" onerror="this.style.display='none'; this.parentElement.classList.add('noimg');">
+          <svg class="catalog-fallback" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="12" width="36" height="24" rx="4"/><rect x="12" y="18" width="8" height="6" rx="1.5"/><path d="M28 20 Q32 17 36 20"/></svg>
+        </div>
+        <div class="catalog-body">
+          <div class="catalog-name">${p.nombre}</div>
+          <div class="catalog-desc">${meta.desc || ''}</div>
+          <div class="catalog-price">${money(p.precio)}</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    grid.querySelectorAll('.catalog-card').forEach(card => {
+      card.addEventListener('click', () => {
+        grid.querySelectorAll('.catalog-card').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        productoElegido = card.dataset.id;
       });
     });
     document.getElementById('reorderSubmit').addEventListener('click', enviarReorder);
@@ -228,6 +278,7 @@
 
   async function enviarReorder(){
     if (!productoElegido) return alert('Elige qué quieres pedir');
+    const producto = PRODUCTOS.find(p => p.id === productoElegido);
     const notas = document.getElementById('reorderNotas').value.trim();
     const btn = document.getElementById('reorderSubmit');
     btn.disabled = true; btn.textContent = 'Enviando…';
@@ -235,7 +286,7 @@
     const { error } = await sb.from('ventas').insert({
       producto_id: productoElegido,
       cliente: CLIENTE,
-      precio_venta: 0,
+      precio_venta: producto?.precio ?? 0,
       socio: 'Cliente',
       entregado: false,
       estado: 'pedido',
