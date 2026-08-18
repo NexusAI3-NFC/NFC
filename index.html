@@ -111,6 +111,24 @@
     font-weight:800; flex-shrink:0;
   }
 
+  .fecha-edit{
+    background:var(--ink-softer); border:1px dashed var(--gold); border-radius:12px;
+    padding:12px 14px; margin-bottom:12px;
+  }
+  .fecha-edit label{
+    display:block; font-family:var(--mono); font-size:10.5px; color:var(--gold);
+    margin-bottom:9px; line-height:1.4;
+  }
+  .fecha-edit-row{ display:flex; gap:8px; align-items:center; }
+  .fecha-edit-row input{
+    flex:1; background:var(--ink-soft); border:1px solid var(--line); border-radius:8px;
+    padding:8px 10px; color:var(--paper); font-size:13px;
+  }
+  .btn-fecha-save{
+    width:34px; height:34px; border-radius:8px; background:var(--gold); color:var(--ink);
+    font-weight:800; flex-shrink:0; border:none;
+  }
+
   .stepper{ display:flex; justify-content:space-between; margin:16px 0 14px; position:relative; }
   .stepper::before{
     content:""; position:absolute; top:6px; left:16px; right:16px; height:2px; background:var(--line); z-index:0;
@@ -573,6 +591,10 @@
         chip.classList.add('active');
         ventaProductoId = chip.dataset.id;
         checkStock(ventaProductoId);
+        const producto = PRODUCTOS.find(p => p.id === ventaProductoId);
+        if (producto && Number(producto.precio) > 0){
+          document.getElementById('ventaPrecio').value = producto.precio;
+        }
       });
     });
 
@@ -627,7 +649,7 @@
       const first = lineas[0];
       const rango = first.fecha_entrega_hasta && first.fecha_entrega_hasta !== first.fecha_entrega_desde
         ? `${fechaBonita(first.fecha_entrega_desde)} — ${fechaBonita(first.fecha_entrega_hasta)}`
-        : (first.fecha_entrega_desde ? fechaBonita(first.fecha_entrega_desde) : 'sin definir');
+        : (first.fecha_entrega_desde ? fechaBonita(first.fecha_entrega_desde) : null);
       const atrasado = lineas.some(l => l.atrasado);
       const total = lineas.reduce((s,l) => s + Number(l.precio_venta || 0), 0);
       const estadoIdx = Math.max(0, ESTADOS.indexOf(first.estado));
@@ -654,7 +676,16 @@
         </div>
         ${lineas.some(l => l.origen === 'cliente') ? '<div class="origen-tag">💬 Pedido por el cliente desde el seguimiento</div>' : ''}
         <div class="pedido-lineas">${lineasHtml}</div>
-        <div class="pedido-fecha">Entrega acordada: <b>${rango}</b></div>
+        ${rango
+          ? `<div class="pedido-fecha">Entrega acordada: <b>${rango}</b></div>`
+          : `<div class="fecha-edit">
+               <label>El cliente no ve esto hasta que lo pongáis — fecha de entrega</label>
+               <div class="fecha-edit-row">
+                 <input type="date" id="fdesde-${first.pedido_id}">
+                 <input type="date" id="fhasta-${first.pedido_id}" title="hasta (opcional, para un rango)">
+                 <button class="btn-fecha-save" data-pedido="${first.pedido_id}">✓</button>
+               </div>
+             </div>`}
         ${first.notas ? `<div class="pedido-producto" style="margin-top:6px;">${first.notas}</div>` : ''}
 
         <div class="stepper">${stepperHtml}</div>
@@ -700,6 +731,19 @@
         if (isNaN(val) || val < 0) return alert('Precio no válido');
         const { error } = await sb.from('ventas').update({ precio_venta: val }).eq('id', btn.dataset.id);
         if (error){ alert('Error: ' + error.message); return; }
+        cargarTodo();
+      });
+    });
+    list.querySelectorAll('.btn-fecha-save').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const desde = document.getElementById('fdesde-' + btn.dataset.pedido).value;
+        const hasta = document.getElementById('fhasta-' + btn.dataset.pedido).value;
+        if (!desde) return alert('Pon al menos la fecha "desde"');
+        btn.disabled = true;
+        const { error } = await sb.from('ventas')
+          .update({ fecha_entrega_desde: desde, fecha_entrega_hasta: hasta || null })
+          .eq('pedido_id', btn.dataset.pedido);
+        if (error){ alert('Error: ' + error.message); btn.disabled = false; return; }
         cargarTodo();
       });
     });
