@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Menú — Nexus</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --ink:#14110D; --ink-soft:#1C1712; --ink-softer:#241E17;
+    --paper:#F4EFE4; --paper-dim:#C9C2B4;
+    --rust:#C6703C; --teal:#1F9E8C; --gold:#E8B93D; --bad:#D9534F;
+    --slate:#9A9184; --line:rgba(244,239,228,0.10); --radius:18px;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+    --sans:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{ background:var(--ink); color:var(--paper); font-family:var(--sans); -webkit-font-smoothing:antialiased; min-height:100vh; }
+  a{color:inherit;} button{font:inherit; cursor:pointer;}
+  h1,h2{font-family:var(--mono); font-weight:800;}
+
+  header{ position:sticky; top:0; z-index:20; background:rgba(20,17,13,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); padding:16px 20px; display:flex; align-items:center; justify-content:space-between; }
+  .brand{ display:flex; align-items:center; gap:8px; font-family:var(--mono); font-weight:800; font-size:14px; color:var(--slate); }
+  .brand svg{ width:20px; height:20px; }
+  .edit-toggle{
+    display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:12px; font-weight:700;
+    padding:8px 14px; border-radius:20px; border:1px solid var(--line); background:var(--ink-soft); color:var(--paper-dim);
+  }
+  .edit-toggle.on{ background:var(--gold); border-color:var(--gold); color:var(--ink); }
+  .edit-toggle svg{ width:14px; height:14px; }
+
+  main{ max-width:560px; margin:0 auto; padding:26px 20px 70px; }
+  .menu-title{ text-align:center; margin-bottom:6px; font-size:26px; }
+  .menu-sub{ text-align:center; color:var(--slate); font-size:13px; font-family:var(--mono); margin-bottom:32px; }
+
+  .cat-title{ font-family:var(--mono); font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--rust); margin:28px 0 12px; }
+  .cat-title:first-child{ margin-top:0; }
+
+  .plato{
+    display:flex; justify-content:space-between; gap:14px; padding:15px 4px; border-bottom:1px solid var(--line);
+  }
+  .plato.no-disp{ opacity:.45; }
+  .plato-info{ min-width:0; }
+  .plato-nombre{ font-weight:700; font-size:15.5px; display:flex; align-items:center; gap:8px; }
+  .plato-desc{ font-size:13px; color:var(--paper-dim); margin-top:3px; line-height:1.4; }
+  .plato-tag{ font-family:var(--mono); font-size:9px; color:var(--bad); border:1px solid var(--bad); padding:2px 6px; border-radius:8px; }
+  .plato-precio{ font-family:var(--mono); font-weight:700; font-size:15px; white-space:nowrap; flex-shrink:0; }
+  .plato-edit-btns{ display:flex; gap:6px; flex-shrink:0; }
+  .icon-btn{ width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--slate); background:var(--ink-soft); border:1px solid var(--line); }
+  .icon-btn svg{ width:14px; height:14px; }
+  .icon-btn.danger:active{ color:var(--bad); border-color:var(--bad); }
+
+  .empty{ text-align:center; padding:50px 20px; color:var(--slate); font-size:14px; }
+
+  .add-plato-btn{
+    width:100%; margin-top:20px; padding:14px; border-radius:14px; border:1.5px dashed var(--gold);
+    background:var(--ink-soft); color:var(--gold); font-weight:700; font-size:14px; display:none;
+  }
+  .add-plato-btn.show{ display:block; }
+
+  .modal-overlay{ position:fixed; inset:0; background:rgba(20,17,13,.85); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; z-index:100; padding:24px; }
+  .modal-box{ background:var(--ink-soft); border:1px solid var(--line); border-radius:20px; padding:26px; max-width:360px; width:100%; max-height:86vh; overflow-y:auto; }
+  .modal-box h3{ font-size:17px; margin-bottom:8px; }
+  .modal-box p{ font-size:13.5px; color:var(--paper-dim); margin-bottom:18px; line-height:1.5; }
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-family:var(--mono); font-size:11px; color:var(--slate); text-transform:uppercase; letter-spacing:.05em; margin-bottom:7px; }
+  .field input, .field textarea{
+    width:100%; background:var(--ink); border:1px solid var(--line); border-radius:10px;
+    padding:12px 13px; color:var(--paper); font-family:var(--sans); font-size:15px;
+  }
+  .field textarea{ min-height:60px; resize:vertical; }
+  .field-row{ display:flex; gap:10px; }
+  .field-row .field{ flex:1; }
+  .checkbox-row{ display:flex; align-items:center; gap:9px; margin-bottom:16px; font-size:14px; }
+  .btn{ width:100%; padding:14px; border-radius:12px; font-weight:700; font-size:14.5px; border:none; margin-top:4px; }
+  .btn-primary{ background:var(--rust); color:var(--paper); }
+  .btn-ghost{ background:none; border:1px solid var(--line); color:var(--paper-dim); margin-top:8px; }
+  .btn-danger{ background:none; border:1px solid var(--bad); color:var(--bad); margin-top:8px; }
+  .pin-input{
+    width:100%; text-align:center; font-size:28px; letter-spacing:14px; font-family:var(--mono);
+    background:var(--ink); border:1px solid var(--line); border-radius:12px; padding:14px; color:var(--paper);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <svg viewBox="0 0 400 400"><rect width="400" height="400" rx="72" fill="#14110D"/><line x1="108" y1="108" x2="292" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><line x1="292" y1="108" x2="108" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><circle cx="108" cy="108" r="27" fill="#C6703C"/><circle cx="292" cy="108" r="27" fill="#C6703C"/><circle cx="108" cy="292" r="27" fill="#C6703C"/><circle cx="292" cy="292" r="27" fill="#C6703C"/><circle cx="200" cy="200" r="33" fill="#C6703C"/></svg>
+    nexus · menú digital
+  </div>
+  <button class="edit-toggle" id="editToggle">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+    <span id="editToggleText">Editar</span>
+  </button>
+</header>
+
+<main>
+  <h1 class="menu-title" id="negocioNombre">Cargando…</h1>
+  <p class="menu-sub" id="negocioSub"></p>
+  <div id="menuContent"></div>
+  <button class="add-plato-btn" id="addPlatoBtn">+ Añadir plato</button>
+</main>
+
+<script>
+  const SUPABASE_URL = 'https://wrdeltvlwvbssjituhll.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_yonWTN-t-1RL-_oa6h-0QQ_Bj4MWess';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const params = new URLSearchParams(location.search);
+  const NEGOCIO_NOMBRE = (params.get('negocio') || '').trim();
+  const money = n => (Number(n)||0).toLocaleString('es-ES', {style:'currency', currency:'EUR'});
+
+  let negocioId = null;
+  let PLATOS = [];
+  let editMode = false;
+
+  function showModal(html){
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `<div class="modal-box">${html}</div>`;
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  // =====================================================================
+  // 1. CARGA INICIAL — busca el negocio por nombre; si no existe, ofrece
+  //    crearlo (primera vez que se configura este menú).
+  // =====================================================================
+  async function init(){
+    if (!NEGOCIO_NOMBRE){
+      document.getElementById('negocioNombre').textContent = 'Enlace incompleto';
+      document.getElementById('negocioSub').textContent = 'Falta el nombre del negocio en la URL (?negocio=...)';
+      return;
+    }
+    document.getElementById('negocioNombre').textContent = NEGOCIO_NOMBRE;
+
+    const { data: negocios } = await sb.from('menu_negocios').select('id, nombre').ilike('nombre', NEGOCIO_NOMBRE.trim());
+    if (negocios && negocios.length){
+      negocioId = negocios[0].id;
+      await cargarPlatos();
+      suscribirTiempoReal();
+    } else {
+      mostrarPrimeraVez();
+    }
+  }
+
+  function mostrarPrimeraVez(){
+    document.getElementById('negocioSub').textContent = 'Este menú todavía no está configurado';
+    document.getElementById('menuContent').innerHTML = `<div class="empty">Nadie ha creado el menú de «${NEGOCIO_NOMBRE}» todavía.</div>`;
+    const overlay = showModal(`
+      <h3>Configurar este menú</h3>
+      <p>Elige un PIN de 4 dígitos — lo pedirá cada vez que alguien quiera editar el menú desde este mismo enlace. Guárdalo, no se puede recuperar desde aquí.</p>
+      <div class="field"><input class="pin-input" id="setupPin" inputmode="numeric" maxlength="4" placeholder="····"></div>
+      <button class="btn btn-primary" id="setupBtn">Crear menú</button>
+    `);
+    document.getElementById('setupBtn').addEventListener('click', async () => {
+      const pin = document.getElementById('setupPin').value.trim();
+      if (!/^\d{4}$/.test(pin)) return alert('El PIN debe ser de 4 dígitos');
+      const { data, error } = await sb.from('menu_negocios').insert({ nombre: NEGOCIO_NOMBRE, pin }).select('id').single();
+      if (error){ alert('Error: ' + error.message); return; }
+      negocioId = data.id;
+      overlay.remove();
+      document.getElementById('negocioSub').textContent = '';
+      editMode = true;
+      updateEditToggle();
+      await cargarPlatos();
+      suscribirTiempoReal();
+    });
+  }
+
+  // =====================================================================
+  // 2. CARGAR Y PINTAR PLATOS
+  // =====================================================================
+  async function cargarPlatos(){
+    const { data } = await sb.from('menu_platos').select('*').eq('negocio_id', negocioId).order('categoria').order('orden');
+    PLATOS = data || [];
+    render();
+  }
+
+  function render(){
+    const content = document.getElementById('menuContent');
+    document.getElementById('addPlatoBtn').classList.toggle('show', editMode);
+
+    if (!PLATOS.length){
+      content.innerHTML = `<div class="empty">${editMode ? 'Todavía no hay platos — añade el primero abajo.' : 'La carta se está preparando.'}</div>`;
+      return;
+    }
+
+    const categorias = [...new Set(PLATOS.map(p => p.categoria))];
+    content.innerHTML = categorias.map(cat => `
+      <div class="cat-title">${cat}</div>
+      ${PLATOS.filter(p => p.categoria === cat).map(p => `
+        <div class="plato ${!p.disponible ? 'no-disp' : ''}">
+          <div class="plato-info">
+            <div class="plato-nombre">${p.nombre} ${!p.disponible ? '<span class="plato-tag">agotado</span>' : ''}</div>
+            ${p.descripcion ? `<div class="plato-desc">${p.descripcion}</div>` : ''}
+          </div>
+          ${editMode ? `
+            <div class="plato-edit-btns">
+              <button class="icon-btn" data-edit="${p.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
+              <button class="icon-btn danger" data-del="${p.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg></button>
+            </div>` : `<div class="plato-precio">${money(p.precio)}</div>`}
+        </div>
+      `).join('')}
+    `).join('');
+
+    if (editMode){
+      content.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => abrirFormPlato(PLATOS.find(p => p.id === btn.dataset.edit))));
+      content.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', () => borrarPlato(btn.dataset.del)));
+    }
+  }
+
+  // =====================================================================
+  // 3. AÑADIR / EDITAR / BORRAR PLATO (solo en modo edición)
+  // =====================================================================
+  function abrirFormPlato(plato){
+    const esNuevo = !plato;
+    const overlay = showModal(`
+      <h3>${esNuevo ? 'Nuevo plato' : 'Editar plato'}</h3>
+      <div class="field"><label>Categoría</label><input id="fCategoria" value="${plato?.categoria || ''}" placeholder="Ej: Entrantes"></div>
+      <div class="field"><label>Nombre</label><input id="fNombre" value="${plato?.nombre || ''}" placeholder="Ej: Ensaladilla rusa"></div>
+      <div class="field"><label>Descripción (opcional)</label><textarea id="fDescripcion" placeholder="Ingredientes o detalle corto">${plato?.descripcion || ''}</textarea></div>
+      <div class="field"><label>Precio (€)</label><input id="fPrecio" type="number" step="0.01" value="${plato?.precio ?? ''}" placeholder="0.00"></div>
+      <div class="checkbox-row"><input type="checkbox" id="fDisponible" ${plato?.disponible !== false ? 'checked' : ''}><label for="fDisponible" style="margin:0;">Disponible ahora</label></div>
+      <button class="btn btn-primary" id="fGuardar">Guardar</button>
+      <button class="btn btn-ghost" id="fCancelar">Cancelar</button>
+    `);
+    document.getElementById('fCancelar').addEventListener('click', () => overlay.remove());
+    document.getElementById('fGuardar').addEventListener('click', async () => {
+      const categoria = document.getElementById('fCategoria').value.trim() || 'General';
+      const nombre = document.getElementById('fNombre').value.trim();
+      const descripcion = document.getElementById('fDescripcion').value.trim();
+      const precio = parseFloat(document.getElementById('fPrecio').value);
+      const disponible = document.getElementById('fDisponible').checked;
+      if (!nombre) return alert('Ponle un nombre al plato');
+      if (isNaN(precio) || precio < 0) return alert('Precio no válido');
+
+      const payload = { categoria, nombre, descripcion, precio, disponible, negocio_id: negocioId };
+      const { error } = esNuevo
+        ? await sb.from('menu_platos').insert(payload)
+        : await sb.from('menu_platos').update(payload).eq('id', plato.id);
+      if (error){ alert('Error: ' + error.message); return; }
+      overlay.remove();
+      cargarPlatos();
+    });
+  }
+
+  async function borrarPlato(id){
+    if (!confirm('¿Quitar este plato del menú?')) return;
+    const { error } = await sb.from('menu_platos').delete().eq('id', id);
+    if (error){ alert('Error: ' + error.message); return; }
+    cargarPlatos();
+  }
+
+  document.getElementById('addPlatoBtn').addEventListener('click', () => abrirFormPlato(null));
+
+  // =====================================================================
+  // 4. ENTRAR/SALIR DE MODO EDICIÓN — pide PIN, lo verifica con la
+  //    función segura (nunca se lee el PIN real desde aquí).
+  // =====================================================================
+  function updateEditToggle(){
+    const toggle = document.getElementById('editToggle');
+    toggle.classList.toggle('on', editMode);
+    document.getElementById('editToggleText').textContent = editMode ? 'Editando' : 'Editar';
+  }
+
+  document.getElementById('editToggle').addEventListener('click', () => {
+    if (!negocioId) return; // aún no configurado
+    if (editMode){
+      editMode = false;
+      updateEditToggle();
+      render();
+      return;
+    }
+    const overlay = showModal(`
+      <h3>PIN del negocio</h3>
+      <p>Para editar el menú de «${NEGOCIO_NOMBRE}».</p>
+      <div class="field"><input class="pin-input" id="checkPin" inputmode="numeric" maxlength="4" placeholder="····"></div>
+      <button class="btn btn-primary" id="checkPinBtn">Entrar</button>
+    `);
+    document.getElementById('checkPinBtn').addEventListener('click', async () => {
+      const pin = document.getElementById('checkPin').value.trim();
+      const { data: ok } = await sb.rpc('verificar_pin_menu', { p_negocio: NEGOCIO_NOMBRE, p_pin: pin });
+      if (!ok){ alert('PIN incorrecto'); return; }
+      overlay.remove();
+      editMode = true;
+      updateEditToggle();
+      render();
+    });
+  });
+
+  // =====================================================================
+  // 5. TIEMPO REAL — si el dueño edita desde otro móvil, se actualiza solo
+  // =====================================================================
+  function suscribirTiempoReal(){
+    sb.channel('menu-' + negocioId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_platos', filter: `negocio_id=eq.${negocioId}` }, cargarPlatos)
+      .subscribe();
+  }
+
+  init();
+</script>
+</body>
+</html>

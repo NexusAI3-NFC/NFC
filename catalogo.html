@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Catálogo NFC — Nexus</title>
+<meta name="description" content="Tarjetas, pegatinas, stands y packs NFC para conectar tu negocio con tus clientes en un toque.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --ink:#14110D; --ink-soft:#1C1712; --ink-softer:#241E17;
+    --paper:#F4EFE4; --paper-dim:#C9C2B4;
+    --rust:#C6703C; --teal:#1F9E8C; --gold:#E8B93D; --bad:#D9534F; --purple:#9B7ED9;
+    --slate:#9A9184; --line:rgba(244,239,228,0.10); --radius:18px;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+    --sans:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--ink); color:var(--paper); font-family:var(--sans);
+    -webkit-font-smoothing:antialiased; min-height:100vh;
+  }
+  a{color:inherit; text-decoration:none;} button{font:inherit; cursor:pointer;}
+  h1,h2,h3{font-family:var(--mono); font-weight:800;}
+  img{display:block; max-width:100%;}
+
+  /* ---------- topbar ---------- */
+  .topbar{
+    position:sticky; top:0; z-index:30; background:rgba(20,17,13,.92); backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line); padding:16px 18px; display:flex; align-items:center; justify-content:space-between;
+  }
+  .topbar .brand{ display:flex; align-items:center; gap:9px; font-family:var(--mono); font-weight:800; font-size:16px; }
+  .topbar svg{ width:24px; height:24px; }
+  .topbar .brand small{ display:block; font-family:var(--sans); font-weight:500; font-size:10.5px; color:var(--slate); letter-spacing:.02em; }
+  .whoami{
+    font-family:var(--mono); font-size:11.5px; color:var(--gold); background:rgba(232,185,61,0.12);
+    border:1px solid rgba(232,185,61,0.3); padding:7px 12px; border-radius:20px;
+  }
+
+  main{ max-width:1120px; margin:0 auto; padding:0 18px; }
+
+  /* ---------- hero (compact) ---------- */
+  .hero{ max-width:640px; margin:0 auto; text-align:center; padding:40px 18px 26px; }
+  .hero .eyebrow{
+    display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:11.5px;
+    color:var(--teal); margin-bottom:14px; background:rgba(31,158,140,0.1); border:1px solid rgba(31,158,140,.3);
+    padding:6px 13px; border-radius:20px;
+  }
+  .hero .live-dot{ width:6px; height:6px; border-radius:50%; background:var(--teal); animation:pulse 1.8s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.3;} }
+  .hero h1{ font-size:clamp(26px,5vw,36px); line-height:1.15; margin-bottom:12px; }
+  .hero p{ font-size:14.5px; color:var(--paper-dim); line-height:1.55; margin-bottom:22px; }
+  .hero-actions{ display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+  .btn-primary{
+    padding:14px 26px; border-radius:14px; background:var(--rust); color:var(--paper);
+    font-weight:700; font-size:14.5px; border:none;
+  }
+  .btn-primary:active{ transform:scale(.98); }
+  .btn-secondary{
+    padding:14px 22px; border-radius:14px; background:none; border:1px solid var(--line);
+    color:var(--paper-dim); font-weight:600; font-size:14.5px;
+  }
+
+  /* ---------- filtros ---------- */
+  .filtros-wrap{
+    position:sticky; top:64px; z-index:20; background:rgba(20,17,13,.92); backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line); padding:12px 0; margin-bottom:28px;
+  }
+  .filtros-bar{
+    display:flex; gap:8px; overflow-x:auto; padding:2px 18px; max-width:1120px; margin:0 auto;
+    scrollbar-width:none;
+  }
+  .filtros-bar::-webkit-scrollbar{ display:none; }
+  .chip-filtro{
+    flex-shrink:0; font-family:var(--mono); font-size:12px; font-weight:600; color:var(--paper-dim);
+    background:var(--ink-soft); border:1px solid var(--line); padding:9px 16px; border-radius:20px;
+    white-space:nowrap;
+  }
+  .chip-filtro.active{ background:var(--rust); border-color:var(--rust); color:var(--paper); }
+
+  /* ---------- section headers ---------- */
+  .sec-head{ margin-bottom:22px; }
+  .sec-head .sec-eyebrow{ font-family:var(--mono); font-size:11.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin-bottom:6px; }
+  .sec-head h2{ font-size:22px; margin-bottom:6px; }
+  .sec-head p{ font-size:13.5px; color:var(--paper-dim); max-width:480px; }
+  section.sec{ padding:8px 0 48px; }
+
+  /* ---------- product grid ---------- */
+  .productos-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(270px,1fr)); gap:18px; }
+  .producto-card{
+    background:var(--ink-soft); border:1px solid var(--line); border-radius:var(--radius);
+    overflow:hidden; display:flex; flex-direction:column; transition:border-color .15s;
+  }
+  .producto-card.destacado{ border-color:rgba(232,185,61,.45); }
+  .producto-card[hidden]{ display:none; }
+  .producto-img-wrap{
+    position:relative; aspect-ratio:4/3; background:linear-gradient(150deg, var(--ink-softer), var(--ink-soft));
+    display:flex; align-items:center; justify-content:center; padding:22px; overflow:hidden;
+  }
+  .producto-img-wrap img{ max-height:100%; max-width:100%; object-fit:contain; filter:drop-shadow(0 10px 18px rgba(0,0,0,.35)); }
+  .producto-badge{
+    position:absolute; top:12px; left:12px; font-family:var(--mono); font-size:9.5px; font-weight:800;
+    background:rgba(232,185,61,0.18); color:var(--gold); padding:4px 10px; border-radius:20px; letter-spacing:.03em;
+  }
+  .producto-body{ padding:18px; display:flex; flex-direction:column; gap:12px; flex:1; }
+  .producto-cat{ font-family:var(--mono); font-size:10.5px; color:var(--slate); text-transform:uppercase; letter-spacing:.05em; }
+  .producto-nombre{ font-size:17px; font-weight:700; }
+  .producto-desc{ font-size:13px; color:var(--paper-dim); line-height:1.55; }
+  .producto-incluye{ list-style:none; display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--paper-dim); }
+  .producto-incluye li{ display:flex; gap:7px; align-items:flex-start; }
+  .producto-incluye li::before{ content:"✓"; color:var(--teal); font-weight:800; flex-shrink:0; }
+
+  .producto-precio-row{ display:flex; align-items:baseline; gap:8px; padding-top:2px; border-top:1px solid var(--line); margin-top:2px; }
+  .producto-precio{ font-family:var(--mono); font-weight:800; font-size:23px; }
+  .producto-precio-suf{ font-size:11px; color:var(--slate); }
+  .producto-precio-nota{ font-size:11.5px; color:var(--gold); line-height:1.4; margin-top:-4px; }
+
+  .nfc-config-block{ background:var(--ink-softer); border-radius:12px; padding:12px 13px; }
+  .nfc-config-label{ font-family:var(--mono); font-size:10.5px; color:var(--gold); display:flex; align-items:center; gap:6px; margin-bottom:10px; }
+  .nfc-chip-grid{ display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .nfc-chip{ font-size:11px; padding:8px 5px; border-radius:9px; background:var(--ink-soft); border:1px solid var(--line); text-align:center; color:var(--paper-dim); }
+  .nfc-chip.active{ border-color:var(--rust); background:rgba(198,112,60,0.16); color:var(--paper); font-weight:600; }
+  .nfc-fija-badge{
+    display:flex; align-items:center; gap:9px; font-size:13.5px; font-weight:700;
+    background:rgba(198,112,60,0.16); border:1px solid var(--rust); border-radius:10px; padding:11px 13px; color:var(--paper);
+  }
+
+  .producto-actions{ display:flex; flex-direction:column; gap:8px; margin-top:auto; padding-top:4px; }
+  .btn-solicitar{
+    width:100%; padding:13px; border-radius:12px; background:var(--teal); color:var(--ink);
+    font-weight:700; font-size:13.5px; border:none;
+  }
+  .btn-solicitar:active{ transform:scale(.98); }
+  .btn-personalizar{
+    width:100%; padding:11px; border-radius:12px; background:none; border:1px dashed var(--gold);
+    color:var(--gold); font-weight:700; font-size:12.5px;
+  }
+
+  /* ---------- packs ---------- */
+  .packs-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(280px,1fr)); gap:18px; }
+  .pack-card{
+    background:var(--ink-soft); border:1.5px dashed var(--line); border-radius:var(--radius);
+    padding:22px; display:flex; flex-direction:column; gap:14px; position:relative;
+  }
+  .pack-card.destacado{ border-style:solid; border-color:var(--gold); background:linear-gradient(160deg, rgba(232,185,61,0.08), var(--ink-soft)); }
+  .pack-badge{
+    align-self:flex-start; font-family:var(--mono); font-size:9.5px; font-weight:800; letter-spacing:.03em;
+    padding:5px 11px; border-radius:20px; background:rgba(155,126,217,0.16); color:var(--purple);
+  }
+  .pack-card.destacado .pack-badge{ background:rgba(232,185,61,0.2); color:var(--gold); }
+  .pack-imgs{ display:flex; align-items:center; justify-content:center; gap:10px; background:var(--ink-softer); border-radius:14px; padding:18px 10px; }
+  .pack-imgs img{ max-height:110px; width:auto; object-fit:contain; filter:drop-shadow(0 8px 14px rgba(0,0,0,.35)); }
+  .pack-imgs .plus{ font-family:var(--mono); color:var(--slate); font-size:16px; }
+  .pack-nombre{ font-size:18px; font-weight:800; }
+  .pack-desc{ font-size:13px; color:var(--paper-dim); line-height:1.55; }
+  .pack-incluye{ list-style:none; display:flex; flex-direction:column; gap:7px; font-size:12.5px; color:var(--paper-dim); }
+  .pack-incluye li{ display:flex; gap:7px; align-items:flex-start; }
+  .pack-incluye li::before{ content:"✓"; color:var(--teal); font-weight:800; flex-shrink:0; }
+  .pack-precio-row{ display:flex; align-items:baseline; gap:8px; border-top:1px solid var(--line); padding-top:12px; }
+  .pack-precio{ font-family:var(--mono); font-weight:800; font-size:26px; }
+  .pack-precio-suf{ font-size:11px; color:var(--slate); }
+  .pack-ideal{ font-size:11.5px; color:var(--slate); }
+  .pack-ideal b{ color:var(--paper-dim); font-weight:600; }
+  .pack-cta{
+    width:100%; padding:13px; border-radius:12px; background:var(--rust); color:var(--paper);
+    font-weight:700; font-size:13.5px; border:none; margin-top:2px;
+  }
+  .pack-card.destacado .pack-cta{ background:var(--gold); color:var(--ink); }
+
+  /* ---------- cómo funciona ---------- */
+  .pasos-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
+  .paso{ background:var(--ink-soft); border:1px solid var(--line); border-radius:16px; padding:18px 16px; }
+  .paso .num{ font-family:var(--mono); font-weight:800; font-size:12px; color:var(--rust); background:rgba(198,112,60,0.14); width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center; margin-bottom:12px; }
+  .paso h3{ font-size:14px; margin-bottom:6px; }
+  .paso p{ font-size:12px; color:var(--paper-dim); line-height:1.5; }
+
+  /* ---------- config nfc explicativo ---------- */
+  .nfc-explain{
+    background:var(--ink-soft); border:1px solid var(--line); border-radius:var(--radius); padding:26px;
+    display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:center;
+  }
+  .nfc-explain .txt h2{ font-size:20px; margin-bottom:10px; }
+  .nfc-explain .txt p{ font-size:13.5px; color:var(--paper-dim); line-height:1.6; margin-bottom:14px; }
+  .nfc-opciones-list{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .nfc-opciones-list div{ font-size:12.5px; background:var(--ink-softer); border-radius:10px; padding:9px 11px; display:flex; align-items:center; gap:7px; }
+  .nfc-explain .estrella{
+    background:rgba(232,185,61,0.1); border:1px solid rgba(232,185,61,.35); border-radius:14px; padding:20px; text-align:center;
+  }
+  .nfc-explain .estrella .big{ font-size:30px; margin-bottom:8px; }
+  .nfc-explain .estrella b{ display:block; color:var(--gold); font-family:var(--mono); font-size:13px; margin-bottom:6px; }
+  .nfc-explain .estrella span{ font-size:12px; color:var(--paper-dim); line-height:1.5; }
+
+  /* ---------- tarjeta de producto con imágenes combinadas (ej. Links Personalizados) ---------- */
+  .producto-combo-imgs{ display:flex; align-items:center; justify-content:center; gap:10px; width:100%; height:100%; }
+  .producto-combo-imgs img{ max-height:78%; max-width:44%; object-fit:contain; filter:drop-shadow(0 10px 18px rgba(0,0,0,.35)); }
+  .producto-combo-imgs .plus{ font-family:var(--mono); color:var(--slate); font-size:15px; flex-shrink:0; }
+  .producto-badge.morado{ background:rgba(155,126,217,0.2); color:var(--purple); }
+
+  /* ---------- CTA final ---------- */
+  .cta-final{
+    background:linear-gradient(135deg, rgba(198,112,60,0.16), var(--ink-soft)); border:1px solid rgba(198,112,60,.3);
+    border-radius:var(--radius); padding:38px 26px; text-align:center; margin-bottom:52px;
+  }
+  .cta-final h2{ font-size:22px; margin-bottom:10px; }
+  .cta-final p{ font-size:13.5px; color:var(--paper-dim); margin-bottom:20px; max-width:420px; margin-left:auto; margin-right:auto; }
+
+  /* ---------- footer ---------- */
+  footer{ border-top:1px solid var(--line); padding:26px 18px 34px; }
+  .footer-inner{ max-width:1120px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+  .footer-brand{ display:flex; align-items:center; gap:8px; font-family:var(--mono); font-weight:800; font-size:13.5px; }
+  .footer-brand svg{ width:18px; height:18px; }
+  footer .footer-note{ font-size:11.5px; color:var(--slate); }
+
+  /* ---------- modal ---------- */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(20,17,13,.85); backdrop-filter:blur(4px);
+    display:none; align-items:center; justify-content:center; z-index:100; padding:20px;
+  }
+  .modal-overlay.open{ display:flex; }
+  .modal-box{ background:var(--ink-soft); border:1px solid var(--line); border-radius:20px; padding:26px; max-width:380px; width:100%; }
+  .modal-box h3{ font-size:18px; margin-bottom:8px; }
+  .modal-box p{ font-size:13px; color:var(--paper-dim); margin-bottom:16px; line-height:1.5; }
+  .modal-box textarea{
+    width:100%; min-height:96px; resize:vertical; background:var(--ink-softer); border:1px solid var(--line);
+    border-radius:12px; padding:12px 13px; color:var(--paper); font-family:var(--sans); font-size:14px; margin-bottom:12px;
+  }
+  .modal-box textarea:focus{ outline:none; border-color:var(--rust); }
+  .modal-examples{ font-size:11.5px; color:var(--slate); line-height:1.7; margin-bottom:16px; }
+  .modal-examples i{ color:var(--paper-dim); font-style:normal; display:block; }
+  .modal-field{ margin-bottom:14px; }
+  .modal-field label{ display:block; font-family:var(--mono); font-size:10.5px; color:var(--slate); text-transform:uppercase; letter-spacing:.05em; margin-bottom:7px; }
+  .modal-field input{
+    width:100%; background:var(--ink); border:1px solid var(--line); border-radius:10px;
+    padding:12px 13px; color:var(--paper); font-family:var(--sans); font-size:15px;
+  }
+  .modal-field input:focus{ outline:none; border-color:var(--rust); }
+  .btn-modal-tracking{
+    display:block; text-align:center; width:100%; padding:13px; border-radius:12px;
+    background:var(--rust); color:var(--paper); font-weight:700; font-size:13.5px; margin-top:4px;
+  }
+  .modal-actions{ display:flex; gap:10px; }
+  .modal-actions button{ flex:1; }
+  .btn-modal-cancel{ padding:13px; border-radius:12px; background:none; border:1px solid var(--line); color:var(--paper-dim); font-size:13px; font-weight:600; }
+  .btn-modal-submit{ padding:13px; border-radius:12px; background:var(--rust); color:var(--paper); font-size:13px; font-weight:700; border:none; }
+  .modal-success{ text-align:center; }
+  .modal-success .ico{ width:52px; height:52px; border-radius:50%; background:rgba(31,158,140,.15); color:var(--teal); display:flex; align-items:center; justify-content:center; margin:0 auto 16px; }
+  .modal-success .ico svg{ width:24px; height:24px; }
+  .btn-modal-close{ width:100%; padding:13px; border-radius:12px; background:var(--teal); color:var(--ink); font-weight:700; font-size:13.5px; border:none; margin-top:6px; }
+
+  /* ---------- responsive ---------- */
+  @media (max-width:860px){
+    .pasos-grid{ grid-template-columns:1fr 1fr; }
+    .nfc-explain{ grid-template-columns:1fr; }
+  }
+  @media (max-width:560px){
+    .pasos-grid{ grid-template-columns:1fr; }
+    .productos-grid{ grid-template-columns:1fr; }
+    .packs-grid{ grid-template-columns:1fr; }
+    .filtros-wrap{ top:58px; }
+    .footer-inner{ flex-direction:column; align-items:flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 400 400"><rect width="400" height="400" rx="72" fill="#14110D"/><line x1="108" y1="108" x2="292" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><line x1="292" y1="108" x2="108" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><circle cx="108" cy="108" r="27" fill="#C6703C"/><circle cx="292" cy="108" r="27" fill="#C6703C"/><circle cx="108" cy="292" r="27" fill="#C6703C"/><circle cx="292" cy="292" r="27" fill="#C6703C"/><circle cx="200" cy="200" r="33" fill="#C6703C"/></svg>
+    <div>Nexus<small>Catálogo NFC</small></div>
+  </div>
+  <span class="whoami">✨ Pide en un toque</span>
+</header>
+
+<section class="hero">
+  <div class="eyebrow"><span class="live-dot"></span> catálogo NFC 2026</div>
+  <h1>Elige tu solución NFC</h1>
+  <p>Tarjetas, pegatinas, stands y packs para conectar tu negocio con tus clientes.</p>
+  <div class="hero-actions">
+    <a href="#catalogo" class="btn-primary">Ver catálogo</a>
+    <a href="#packs" class="btn-secondary">Ver packs</a>
+  </div>
+</section>
+
+<div class="filtros-wrap">
+  <div class="filtros-bar" id="filtrosBar">
+    <button class="chip-filtro active" data-filter="todos">Todos</button>
+    <button class="chip-filtro" data-filter="tarjetas">Tarjetas</button>
+    <button class="chip-filtro" data-filter="pegatinas">Pegatinas</button>
+    <button class="chip-filtro" data-filter="stands">Stands</button>
+    <button class="chip-filtro" data-filter="menu">Menú</button>
+    <button class="chip-filtro" data-filter="links">Links</button>
+    <button class="chip-filtro" data-filter="packs">Packs</button>
+  </div>
+</div>
+
+<main>
+
+  <section class="sec" id="catalogo">
+    <div class="sec-head">
+      <div class="sec-eyebrow">Productos</div>
+      <h2>El catálogo</h2>
+      <p>Cada producto incluye configuración NFC básica. Si necesitas algo distinto, lo personalizamos contigo.</p>
+    </div>
+    <div class="productos-grid" id="productosGrid"></div>
+  </section>
+
+  <section class="sec" id="packs">
+    <div class="sec-head">
+      <div class="sec-eyebrow">Combina y ahorra tiempo</div>
+      <h2>Packs</h2>
+      <p>Todo lo que necesitas para conectar tu negocio, listo en una sola solicitud.</p>
+    </div>
+    <div class="packs-grid" id="packsGrid"></div>
+  </section>
+
+  <section class="sec" id="como-funciona">
+    <div class="sec-head">
+      <div class="sec-eyebrow">Es muy sencillo</div>
+      <h2>¿Cómo funciona?</h2>
+    </div>
+    <div class="pasos-grid">
+      <div class="paso"><div class="num">1</div><h3>Elige tu producto</h3><p>Tarjeta, pegatina, stand o un pack completo.</p></div>
+      <div class="paso"><div class="num">2</div><h3>Elige la configuración básica</h3><p>Redes sociales, reseñas, WhatsApp, menú o Google Maps.</p></div>
+      <div class="paso"><div class="num">3</div><h3>¿Quieres algo personalizado?</h3><p>Pulsa «Personalizar NFC» y cuéntanos qué necesitas.</p></div>
+      <div class="paso"><div class="num">4</div><h3>Nosotros lo configuramos</h3><p>Preparamos tu NFC y te lo entregamos listo para usar.</p></div>
+    </div>
+  </section>
+
+  <section class="sec" id="config-nfc">
+    <div class="nfc-explain">
+      <div class="txt">
+        <h2>Configuración NFC</h2>
+        <p>Todos los productos NFC permiten elegir qué ocurre cuando alguien acerca el móvil. Puedes cambiarlo cuando quieras.</p>
+        <div class="nfc-opciones-list">
+          <div>📱 Redes sociales</div>
+          <div>⭐ Dejar una reseña</div>
+          <div>💬 WhatsApp / Contacto</div>
+          <div>🍽️ Menú</div>
+          <div>📍 Google Maps</div>
+          <div>🔗 Otra opción</div>
+        </div>
+      </div>
+      <div class="estrella">
+        <div class="big">⭐</div>
+        <b>Configuración básica</b>
+        <span>Recomendada para empezar. No hace falta escribir ninguna URL — nosotros lo dejamos listo con la opción que elijas.</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-final">
+    <h2>¿Listo para conectar tu negocio?</h2>
+    <p>Elige tu producto, tu configuración básica y, si quieres, personalízalo. Nosotros nos encargamos del resto.</p>
+    <a href="#catalogo" class="btn-primary">Ver catálogo</a>
+  </section>
+
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <svg viewBox="0 0 400 400"><rect width="400" height="400" rx="72" fill="#14110D"/><line x1="108" y1="108" x2="292" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><line x1="292" y1="108" x2="108" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><circle cx="108" cy="108" r="27" fill="#C6703C"/><circle cx="292" cy="108" r="27" fill="#C6703C"/><circle cx="108" cy="292" r="27" fill="#C6703C"/><circle cx="292" cy="292" r="27" fill="#C6703C"/><circle cx="200" cy="200" r="33" fill="#C6703C"/></svg>
+      Nexus NFC
+    </div>
+    <div class="footer-note" id="footerNote">Soluciones de contacto sin contacto para tu negocio.</div>
+  </div>
+</footer>
+
+<!-- ---------- modal personalizar / solicitar ---------- -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-box">
+    <div id="modalForm">
+      <h3 id="modalTitle">Personaliza tu NFC</h3>
+      <p id="modalSubtitle">Cuéntanos qué quieres que haga tu NFC y nosotros nos encargamos de configurarlo.</p>
+
+      <div class="modal-field">
+        <label>Tu nombre o el de tu negocio</label>
+        <input type="text" id="modalNombre" placeholder="Ej: Peluquería Ana">
+      </div>
+      <div class="modal-field">
+        <label>Teléfono de contacto</label>
+        <input type="tel" id="modalTelefono" placeholder="Ej: 600 000 000">
+      </div>
+      <div class="modal-field">
+        <label>Cuéntanos qué necesitas</label>
+        <textarea id="modalTextarea" placeholder="Explícanos qué necesitas..."></textarea>
+      </div>
+      <div class="modal-examples">
+        <i>"Quiero que lleve a mi página web."</i>
+        <i>"Quiero que abra Instagram, Facebook y TikTok."</i>
+        <i>"Quiero que lleve directamente a mis reseñas de Google."</i>
+        <i>"Quiero crear una página con varios enlaces."</i>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-modal-cancel" id="modalCancel">Cancelar</button>
+        <button class="btn-modal-submit" id="modalSubmit">Enviar solicitud</button>
+      </div>
+    </div>
+    <div id="modalSuccess" class="modal-success" style="display:none;">
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <h3>¡Solicitud recibida!</h3>
+      <p id="modalSuccessText">Hemos recibido tu solicitud de personalización. Nos pondremos en contacto contigo para preparar tu NFC.</p>
+      <a class="btn-modal-tracking" id="modalTrackingLink" href="#">Ver el estado de tu pedido →</a>
+      <button class="btn-modal-close" id="modalClose">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const SUPABASE_URL = 'https://wrdeltvlwvbssjituhll.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_yonWTN-t-1RL-_oa6h-0QQ_Bj4MWess';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // Cada tarjeta del catálogo tiene su propio id (tarjeta, stand, menu...)
+  // pero en Supabase los productos se llaman de otra forma — este mapa
+  // traduce uno al otro para saber qué producto_id usar al guardar el
+  // pedido. Si algún día cambiáis un nombre en Supabase, se actualiza
+  // aquí, en un solo sitio.
+  const MAPA_PRODUCTO_SUPABASE = {
+    'tarjeta': 'Tarjeta',
+    'stand': 'Cartel',
+    'menu': 'Menú Digital',
+    'pegatina': 'Pegatina',
+    'personalizada': 'Tarjeta Personalizada',
+    'links-personalizados': 'Tarjeta Personalizada', // no hay un producto exacto; se anota en las notas
+    'pack-completo': 'Pack Completo',
+    'pack-mostrador': 'Pack Mostrador',
+    'pack-esencial': 'Pack Esencial',
+  };
+  let PRODUCTOS_SUPABASE = []; // se carga al inicio, [{id, nombre}, ...]
+
+  document.getElementById('footerNote').textContent += ' · ' + new Date().getFullYear();
+
+  // ------------------------------------------------------------------
+  // Datos del catálogo. Precios y contenidos son los oficiales dados
+  // por el negocio — no se inventa ningún precio ni característica.
+  // Para añadir un producto nuevo, basta con añadir un objeto aquí.
+  // ------------------------------------------------------------------
+  const NFC_OPCIONES = [
+    { icon:'📱', label:'Redes sociales' },
+    { icon:'⭐', label:'Dejar una reseña' },
+    { icon:'💬', label:'WhatsApp' },
+    { icon:'🍽️', label:'Menú' },
+    { icon:'📍', label:'Google Maps' },
+    { icon:'🔗', label:'Otra opción' },
+  ];
+
+  const PRODUCTOS = [
+    {
+      id:'tarjeta',
+      categoria:'tarjetas',
+      categoriaLabel:'Tarjetas NFC',
+      nombre:'Tarjeta NFC',
+      precio:'15 €',
+      precioSufijo:null,
+      precioNota:null,
+      desc:'Comparte tus redes, tu contacto, reseñas y mucho más con un simple toque o escaneando el QR.',
+      incluye:['Tarjeta NFC tamaño tarjeta de crédito','Chip NFC + código QR de respaldo','Configuración básica incluida'],
+      imagenes:['assets/tarjeta-1.png'],
+      nfcFija:{ icon:'⭐', label:'Dejar una reseña' },
+      personalizable:false,
+    },
+    {
+      id:'stand',
+      categoria:'stands',
+      categoriaLabel:'Stands y expositores',
+      nombre:'Stand / Cartel NFC',
+      precio:'25 €',
+      precioSufijo:null,
+      precioNota:null,
+      desc:'Expositor de sobremesa que se mantiene de pie solo, sin pilas ni wifi. Ideal para mostrador, mesas o escaparate.',
+      incluye:['Expositor acrílico, se sostiene solo','Chip NFC + QR incluidos','No necesita pilas ni wifi'],
+      imagenes:['assets/stand-1.png','assets/stand-2.png'],
+      nfcFija:{ icon:'⭐', label:'Dejar una reseña' },
+      personalizable:false,
+    },
+    {
+      id:'menu',
+      categoria:'menu',
+      categoriaLabel:'Menú digital',
+      nombre:'Tarjeta / Menú NFC',
+      precio:'15 €',
+      precioSufijo:'— configuración básica',
+      precioNota:'Si necesitas algo más personalizado, consúltanos.',
+      desc:'Tarjeta NFC pensada para tu carta digital. Un toque y tus clientes ven el menú al momento.',
+      incluye:['Tarjeta NFC + QR','Enlace directo a tu carta digital','Digitalización de la carta con coste aparte'],
+      imagenes:['assets/menu-1.png','assets/menu-2.png'],
+      nfcFija:{ icon:'🍽️', label:'Menú' },
+    },
+    {
+      id:'pegatina',
+      categoria:'pegatinas',
+      categoriaLabel:'Pegatinas NFC',
+      nombre:'Pegatinas NFC',
+      precio:'20 €',
+      precioSufijo:null,
+      precioNota:null,
+      desc:'Placa adhesiva con chip NFC. Se pega en cristal, pared, caja o mostrador — la opción más discreta.',
+      incluye:['Placa adhesiva con NFC y QR','Se pega en cualquier superficie lisa','Configuración básica incluida'],
+      imagenes:['assets/tarjeta-2.png'],
+    },
+    {
+      id:'personalizada',
+      categoria:'tarjetas',
+      categoriaLabel:'Tarjetas NFC · Personalizada',
+      nombre:'Tarjeta NFC Personalizada',
+      precio:'Desde 15 €',
+      precioSufijo:'— personalización básica',
+      precioNota:'El precio puede variar según el nivel de personalización solicitado.',
+      desc:'Tu tarjeta con tu identidad y el NFC configurado exactamente como lo necesita tu negocio.',
+      incluye:['Diseño personalizado con tu marca','Chip NFC + QR incluidos','Configuración a medida'],
+      imagenes:['assets/personalizada-1.png'],
+      destacado:true,
+      badge:'PERSONALIZABLE',
+    },
+    {
+      id:'links-personalizados',
+      categoria:'links',
+      categoriaLabel:'Personalización avanzada',
+      nombre:'Links Personalizados',
+      precio:'A medida',
+      precioSufijo:null,
+      precioNota:'Te damos un presupuesto según lo que necesites — sin coste fijo cerrado.',
+      desc:'Menús digitales, páginas con todos tus enlaces o cualquier otro contenido a medida, con tu marca y tal como lo necesites.',
+      incluye:['Menús digitales editables cuando quieras','Páginas de enlaces: redes, web, WhatsApp, reservas...','Diseño con tu marca y tus colores'],
+      imagenes:['assets/links-1.png'],
+      sinConfig:true,
+      personalizable:false,
+      destacado:true,
+      badge:'DISEÑO A MEDIDA',
+      badgeClase:'morado',
+    },
+  ];
+
+  // Packs — extraídos de la imagen "packs" facilitada por el negocio.
+  const PACKS = [
+    {
+      id:'pack-completo',
+      nombre:'Pack Completo',
+      badge:'MÁS VISIBLE',
+      precio:'40 €',
+      precioSufijo:'por unidad',
+      desc:'Expositor rígido de sobremesa más una placa adhesiva para la barra o la puerta. Dos puntos de contacto en el mismo local.',
+      incluye:['Expositor acrílico en L, se mantiene de pie solo','Placa adhesiva con NFC y QR','Para mostrador, mesas y escaparate'],
+      ideal:'Bares, restaurantes y clínicas con mostrador propio.',
+      imagenes:['assets/stand-1.png','assets/tarjeta-2.png'],
+    },
+    {
+      id:'pack-mostrador',
+      nombre:'Pack Mostrador',
+      badge:'MÁS ELEGIDO',
+      destacado:true,
+      precio:'35 €',
+      precioSufijo:'por unidad',
+      desc:'El expositor de sobremesa con una tarjeta de bolsillo para el camarero o el repartidor. Ideal para hostelería.',
+      incluye:['Expositor acrílico en L con NFC y QR','Tarjeta NFC tamaño cartera','Se acerca a la mesa con la cuenta'],
+      ideal:'Hostelería y comercio donde se atiende en la mesa.',
+      imagenes:['assets/stand-1.png','assets/tarjeta-1.png'],
+    },
+    {
+      id:'pack-esencial',
+      nombre:'Pack Esencial',
+      badge:'MÁS LIGERO',
+      precio:'30 €',
+      precioSufijo:'por unidad',
+      desc:'Placa adhesiva y tarjeta NFC, sin expositor. La opción compacta para negocios con poco espacio en el mostrador.',
+      incluye:['Placa adhesiva con NFC y QR','Tarjeta NFC tamaño cartera','Se pega en cristal, pared o caja'],
+      ideal:'Peluquerías, taxis y locales con poco espacio.',
+      imagenes:['assets/tarjeta-2.png','assets/tarjeta-1.png'],
+    },
+  ];
+
+  const grid = document.getElementById('productosGrid');
+  const packsGrid = document.getElementById('packsGrid');
+
+  function renderProductos(){
+    grid.innerHTML = PRODUCTOS.map(p => `
+      <div class="producto-card ${p.destacado ? 'destacado' : ''}" data-cat="${p.categoria}">
+        <div class="producto-img-wrap">
+          ${p.badge ? `<span class="producto-badge ${p.badgeClase||''}">${p.badge}</span>` : ''}
+          ${p.combo
+            ? `<div class="producto-combo-imgs"><img src="${p.imagenes[0]}" alt=""><span class="plus">+</span><img src="${p.imagenes[1]}" alt=""></div>`
+            : `<img src="${p.imagenes[0]}" alt="${p.nombre}">`}
+        </div>
+        <div class="producto-body">
+          <div class="producto-cat">${p.categoriaLabel}</div>
+          <div class="producto-nombre">${p.nombre}</div>
+          <div class="producto-desc">${p.desc}</div>
+          <ul class="producto-incluye">${p.incluye.map(i => `<li>${i}</li>`).join('')}</ul>
+          <div class="producto-precio-row">
+            <div class="producto-precio">${p.precio}</div>
+            ${p.precioSufijo ? `<div class="producto-precio-suf">${p.precioSufijo}</div>` : ''}
+          </div>
+          ${p.precioNota ? `<div class="producto-precio-nota">${p.precioNota}</div>` : ''}
+
+          ${p.sinConfig ? '' : (p.nfcFija ? `
+          <div class="nfc-config-block">
+            <div class="nfc-config-label">⭐ Configuración incluida</div>
+            <div class="nfc-fija-badge">${p.nfcFija.icon} ${p.nfcFija.label}</div>
+          </div>` : `
+          <div class="nfc-config-block">
+            <div class="nfc-config-label">⭐ Configuración básica — recomendada</div>
+            <div class="nfc-chip-grid" data-producto="${p.id}">
+              ${NFC_OPCIONES.map((o,i) => `<button class="nfc-chip ${i===1?'active':''}" data-val="${o.label}">${o.icon} ${o.label}</button>`).join('')}
+            </div>
+          </div>`)}
+
+          <div class="producto-actions">
+            <button class="btn-solicitar" data-solicitar="${p.id}">Solicitar ${p.nombre}</button>
+            ${p.personalizable !== false ? `<button class="btn-personalizar" data-personalizar="${p.id}">Personalizar NFC</button>` : ''}
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    // selección de chip de configuración (una opción activa por producto)
+    grid.querySelectorAll('.nfc-chip-grid').forEach(gridEl => {
+      gridEl.querySelectorAll('.nfc-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          gridEl.querySelectorAll('.nfc-chip').forEach(c => c.classList.remove('active'));
+          chip.classList.add('active');
+        });
+      });
+    });
+
+    grid.querySelectorAll('[data-solicitar]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const p = PRODUCTOS.find(x => x.id === btn.dataset.solicitar);
+        let subtitulo, config = null;
+        if (p.sinConfig){
+          subtitulo = 'Cuéntanos qué necesitas — menú digital, página de enlaces u otro contenido a medida — y te preparamos un presupuesto.';
+        } else {
+          config = p.nfcFija ? p.nfcFija.label
+            : (grid.querySelector(`.nfc-chip-grid[data-producto="${p.id}"] .nfc-chip.active`)?.dataset.val || 'Configuración básica');
+          subtitulo = `Vamos a preparar tu ${p.nombre.toLowerCase()} con la configuración «${config}». Cuéntanos cualquier detalle adicional (opcional).`;
+        }
+        abrirModal({
+          titulo: `Solicitar ${p.nombre}`,
+          subtitulo,
+          successText: `Hemos recibido tu solicitud de «${p.nombre}». Nos pondremos en contacto contigo para prepararlo.`,
+          catalogoId: p.id,
+          config,
+        });
+      });
+    });
+    grid.querySelectorAll('[data-personalizar]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const p = PRODUCTOS.find(x => x.id === btn.dataset.personalizar);
+        abrirModal({
+          titulo: 'Personaliza tu NFC',
+          subtitulo: 'Cuéntanos qué quieres que haga tu NFC y nosotros nos encargamos de configurarlo.',
+          successText: 'Hemos recibido tu solicitud de personalización. Nos pondremos en contacto contigo para preparar tu NFC.',
+          catalogoId: p.id,
+          config: null,
+        });
+      });
+    });
+  }
+
+  function renderPacks(){
+    packsGrid.innerHTML = PACKS.map(p => `
+      <div class="pack-card ${p.destacado ? 'destacado' : ''}">
+        <span class="pack-badge">${p.badge}</span>
+        <div class="pack-imgs">
+          <img src="${p.imagenes[0]}" alt="">
+          <span class="plus">+</span>
+          <img src="${p.imagenes[1]}" alt="">
+        </div>
+        <div class="pack-nombre">${p.nombre}</div>
+        <div class="pack-desc">${p.desc}</div>
+        <ul class="pack-incluye">${p.incluye.map(i => `<li>${i}</li>`).join('')}</ul>
+        <div class="pack-precio-row">
+          <div class="pack-precio">${p.precio}</div>
+          <div class="pack-precio-suf">${p.precioSufijo}</div>
+        </div>
+        <div class="pack-ideal">Ideal para: <b>${p.ideal}</b></div>
+        <button class="pack-cta" data-pack="${p.id}">Solicitar ${p.nombre}</button>
+      </div>
+    `).join('');
+
+    packsGrid.querySelectorAll('[data-pack]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const p = PACKS.find(x => x.id === btn.dataset.pack);
+        abrirModal({
+          titulo: `Solicitar ${p.nombre}`,
+          subtitulo: `Cuéntanos cualquier detalle sobre tu ${p.nombre.toLowerCase()} (configuración NFC, cantidad, plazos...).`,
+          successText: `Hemos recibido tu solicitud de «${p.nombre}». Nos pondremos en contacto contigo para prepararlo.`,
+          catalogoId: p.id,
+          config: null,
+        });
+      });
+    });
+  }
+
+  // ---------------- filtros ----------------
+  document.getElementById('filtrosBar').addEventListener('click', (e) => {
+    const btn = e.target.closest('.chip-filtro');
+    if (!btn) return;
+    document.querySelectorAll('.chip-filtro').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    const f = btn.dataset.filter;
+
+    if (f === 'packs'){
+      document.getElementById('packs').scrollIntoView({ behavior:'smooth', block:'start' });
+      document.querySelectorAll('.producto-card').forEach(c => c.hidden = false);
+      return;
+    }
+    document.getElementById('catalogo').scrollIntoView({ behavior:'smooth', block:'start' });
+    document.querySelectorAll('.producto-card').forEach(card => {
+      card.hidden = (f !== 'todos' && card.dataset.cat !== f);
+    });
+  });
+
+  const overlay = document.getElementById('modalOverlay');
+  const modalForm = document.getElementById('modalForm');
+  const modalSuccess = document.getElementById('modalSuccess');
+  const modalTitle = document.getElementById('modalTitle');
+  const modalSubtitle = document.getElementById('modalSubtitle');
+  const modalSuccessText = document.getElementById('modalSuccessText');
+  const modalTextarea = document.getElementById('modalTextarea');
+  const modalNombre = document.getElementById('modalNombre');
+  const modalTelefono = document.getElementById('modalTelefono');
+  const modalTrackingLink = document.getElementById('modalTrackingLink');
+
+  let modalCatalogoId = null;
+  let modalConfig = null;
+
+  function abrirModal({ titulo, subtitulo, successText, catalogoId, config }){
+    modalTitle.textContent = titulo;
+    modalSubtitle.textContent = subtitulo;
+    modalSuccessText.textContent = successText;
+    modalTextarea.value = '';
+    modalNombre.value = '';
+    modalTelefono.value = '';
+    modalCatalogoId = catalogoId;
+    modalConfig = config;
+    modalForm.style.display = 'block';
+    modalSuccess.style.display = 'none';
+    overlay.classList.add('open');
+  }
+  function cerrarModal(){ overlay.classList.remove('open'); }
+
+  document.getElementById('modalCancel').addEventListener('click', cerrarModal);
+  document.getElementById('modalClose').addEventListener('click', cerrarModal);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) cerrarModal(); });
+
+  document.getElementById('modalSubmit').addEventListener('click', async () => {
+    const nombre = modalNombre.value.trim();
+    const telefono = modalTelefono.value.trim();
+    const comentario = modalTextarea.value.trim();
+
+    if (!nombre) return alert('Escribe tu nombre o el de tu negocio');
+    if (!telefono) return alert('Escribe un teléfono de contacto');
+
+    const nombreSupabase = MAPA_PRODUCTO_SUPABASE[modalCatalogoId];
+    const producto = PRODUCTOS_SUPABASE.find(p => p.nombre === nombreSupabase);
+    if (!producto){
+      alert('No se pudo identificar el producto — contacta con nosotros directamente, por favor.');
+      return;
+    }
+
+    const notasPartes = [`Tel: ${telefono}`];
+    if (modalConfig) notasPartes.push(`Config: ${modalConfig}`);
+    if (modalCatalogoId === 'links-personalizados') notasPartes.push('Pedido originalmente como: Links Personalizados');
+    if (comentario) notasPartes.push(comentario);
+
+    const btn = document.getElementById('modalSubmit');
+    btn.disabled = true; btn.textContent = 'Enviando…';
+
+    const { error } = await sb.from('ventas').insert({
+      producto_id: producto.id,
+      cliente: nombre,
+      precio_venta: 0,
+      socio: 'Cliente',
+      entregado: false,
+      estado: 'pedido',
+      origen: 'cliente',
+      pedido_id: crypto.randomUUID(),
+      notas: notasPartes.join(' — '),
+    });
+
+    btn.disabled = false; btn.textContent = 'Enviar solicitud';
+    if (error){ alert('No se pudo enviar, inténtalo de nuevo: ' + error.message); return; }
+
+    modalTrackingLink.href = `seguimiento-cliente.html?cliente=${encodeURIComponent(nombre)}`;
+    modalForm.style.display = 'none';
+    modalSuccess.style.display = 'block';
+  });
+
+  async function cargarProductosSupabase(){
+    const { data } = await sb.from('productos').select('id, nombre').eq('activo', true);
+    PRODUCTOS_SUPABASE = data || [];
+  }
+
+  cargarProductosSupabase();
+  renderProductos();
+  renderPacks();
+</script>
+</body>
+</html>
