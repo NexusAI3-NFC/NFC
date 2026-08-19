@@ -430,7 +430,11 @@
     'pack-mostrador': 'Pack Mostrador',
     'pack-esencial': 'Pack Esencial',
   };
-  let PRODUCTOS_SUPABASE = []; // se carga al inicio, [{id, nombre}, ...]
+  // El único que de verdad no tiene precio cerrado — se habla con el
+  // cliente primero y se pone a mano en Pendientes. Todo lo demás usa
+  // el precio real de Supabase automáticamente, sin tocar nada.
+  const PRECIO_VARIABLE = new Set(['links-personalizados']);
+  let PRODUCTOS_SUPABASE = []; // se carga al inicio, [{id, nombre, precio}, ...]
 
   document.getElementById('footerNote').textContent += ' · ' + new Date().getFullYear();
 
@@ -767,13 +771,16 @@
     if (modalCatalogoId === 'links-personalizados') notasPartes.push('Pedido originalmente como: Links Personalizados');
     if (comentario) notasPartes.push(comentario);
 
+    const esVariable = PRECIO_VARIABLE.has(modalCatalogoId);
+    const precioVenta = esVariable ? 0 : Number(producto.precio || 0);
+
     const btn = document.getElementById('modalSubmit');
     btn.disabled = true; btn.textContent = 'Enviando…';
 
     const { error } = await sb.from('ventas').insert({
       producto_id: producto.id,
       cliente: nombre,
-      precio_venta: 0,
+      precio_venta: precioVenta,
       socio: 'Cliente',
       entregado: false,
       estado: 'pedido',
@@ -791,7 +798,7 @@
   });
 
   async function cargarProductosSupabase(){
-    const { data } = await sb.from('productos').select('id, nombre').eq('activo', true);
+    const { data } = await sb.from('productos').select('id, nombre, precio').eq('activo', true);
     PRODUCTOS_SUPABASE = data || [];
   }
 
