@@ -249,7 +249,10 @@
     <svg viewBox="0 0 400 400"><rect width="400" height="400" rx="72" fill="#14110D"/><line x1="108" y1="108" x2="292" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><line x1="292" y1="108" x2="108" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><circle cx="108" cy="108" r="27" fill="#C6703C"/><circle cx="292" cy="108" r="27" fill="#C6703C"/><circle cx="108" cy="292" r="27" fill="#C6703C"/><circle cx="292" cy="292" r="27" fill="#C6703C"/><circle cx="200" cy="200" r="33" fill="#C6703C"/></svg>
     Control NFC
   </div>
-  <button class="whoami" id="whoamiBtn">👤 <span id="whoamiName">—</span></button>
+  <div style="display:flex; gap:8px;">
+    <button class="whoami" id="notifBtn" title="Avisos de pedidos nuevos">🔔</button>
+    <button class="whoami" id="whoamiBtn">👤 <span id="whoamiName">—</span></button>
+  </div>
 </header>
 
 <main>
@@ -531,6 +534,7 @@
     PACKS = packs || [];
     GLOBAL = global || null;
     PENDIENTES = pendientes || [];
+    detectarPedidosNuevos();
     renderInicio();
     renderProductGrids();
     renderPendientes();
@@ -924,6 +928,59 @@
     .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos_generales' }, cargarTodo)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'ahorros' }, cargarTodo)
     .subscribe();
+
+  // =====================================================================
+  // 10. RED DE SEGURIDAD — además del tiempo real, refresca cada 30s por
+  //     si el aviso en directo se pierde por lo que sea (wifi, pestaña
+  //     que estuvo dormida...). No hace daño tenerlo de más.
+  // =====================================================================
+  setInterval(cargarTodo, 30000);
+
+  // =====================================================================
+  // 11. AVISOS DEL NAVEGADOR — cuando llega un pedido nuevo hecho por un
+  //     cliente (no cuando vosotros mismos registráis una venta). Hace
+  //     falta que alguien pulse la campana una vez para dar permiso —
+  //     los navegadores no dejan pedirlo solo, sin que nadie toque nada.
+  // =====================================================================
+  let notifActivas = (typeof Notification !== 'undefined' && Notification.permission === 'granted');
+  let idsPedidosConocidos = null; // null = todavía no hemos cargado nunca
+
+  function actualizarBotonNotif(){
+    const btn = document.getElementById('notifBtn');
+    if (typeof Notification === 'undefined'){ btn.style.display = 'none'; return; }
+    btn.textContent = notifActivas ? '🔔' : '🔕';
+    btn.style.opacity = notifActivas ? '1' : '.5';
+    btn.title = notifActivas ? 'Avisos activados' : 'Toca para activar avisos de pedidos nuevos';
+  }
+
+  document.getElementById('notifBtn').addEventListener('click', () => {
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission === 'granted'){ notifActivas = !notifActivas; actualizarBotonNotif(); return; }
+    Notification.requestPermission().then(permiso => {
+      notifActivas = (permiso === 'granted');
+      actualizarBotonNotif();
+      if (!notifActivas) alert('Sin permiso no puedo avisarte — actívalo desde los ajustes del navegador si cambias de idea.');
+    });
+  });
+  actualizarBotonNotif();
+
+  function detectarPedidosNuevos(){
+    const actuales = new Set(PENDIENTES.filter(p => p.origen === 'cliente').map(p => p.pedido_id));
+    if (idsPedidosConocidos === null){ idsPedidosConocidos = actuales; return; } // primera carga: no avisar de lo que ya había
+
+    actuales.forEach(id => {
+      if (idsPedidosConocidos.has(id)) return; // ya lo conocíamos
+      const linea = PENDIENTES.find(p => p.pedido_id === id);
+      if (!linea) return;
+      if (notifActivas){
+        new Notification('Pedido nuevo — ' + linea.cliente, {
+          body: `${linea.producto}${linea.notas ? ' · ' + linea.notas : ''}`,
+          icon: undefined,
+        });
+      }
+    });
+    idsPedidosConocidos = actuales;
+  }
 
   cargarTodo();
 </script>
