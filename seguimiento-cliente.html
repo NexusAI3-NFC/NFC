@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Seguimiento de tu pedido — Nexus</title>
+<link rel="manifest" href="manifest-seguimiento.json">
+<meta name="theme-color" content="#14110D">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -228,10 +231,10 @@
   // se ve un icono en su lugar, no un hueco roto.
   const CATALOGO_ORDEN = ['Cartel', 'Tarjeta', 'Tarjeta Personalizada', 'Menú Digital'];
   const CATALOGO_META = {
-    'Cartel':                { img: 'assets/panel.png', desc: 'Expositor de sobremesa. Se mantiene de pie solo, sin pilas ni wifi.' },
-    'Tarjeta':                { img: 'assets/card-tilted-final.png', desc: 'Tarjeta NFC para pedir reseñas de Google en un toque.' },
-    'Tarjeta Personalizada':  { img: 'assets/personalizable-card.png', desc: 'Contacto, redes sociales, tu web o un enlace especial — vosotros elegís.' },
-    'Menú Digital':           { img: 'assets/Menu.png', desc: 'Tarjeta + carta digital. Puedes editarla tú mismo cuando quieras. Digitalización con coste aparte.' },
+    'Cartel':                { img: 'assets/cartel.jpg', desc: 'Expositor de sobremesa. Se mantiene de pie solo, sin pilas ni wifi.' },
+    'Tarjeta':                { img: 'assets/tarjeta-resenas.jpg', desc: 'Tarjeta NFC para pedir reseñas de Google en un toque.' },
+    'Tarjeta Personalizada':  { img: 'assets/tarjeta-personalizada.jpg', desc: 'Contacto, redes sociales, tu web o un enlace especial — vosotros elegís.' },
+    'Menú Digital':           { img: 'assets/menu.png', desc: 'Tarjeta + carta digital. Puedes editarla tú mismo cuando quieras. Digitalización con coste aparte.' },
   };
 
   function formularioHtml(){
@@ -324,6 +327,8 @@
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ventas', filter: `cliente=eq.${CLIENTE}` }, cargar)
       .subscribe();
   }
+
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 </script>
 </body>
 </html>
