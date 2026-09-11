@@ -31,6 +31,10 @@
   }
   .topbar .brand{ display:flex; align-items:center; gap:9px; font-family:var(--mono); font-weight:800; font-size:16px; }
   .topbar svg{ width:24px; height:24px; }
+  .whoami{
+    font-family:var(--mono); font-size:12px; color:var(--slate); background:var(--ink-soft);
+    border:1px solid var(--line); padding:7px 12px; border-radius:20px; display:flex; align-items:center; gap:6px;
+  }
 
   .viewtabs{
     display:flex; gap:8px; max-width:1180px; margin:18px auto 0; padding:0 18px;
@@ -114,6 +118,23 @@
   }
   .field textarea{ min-height:80px; resize:vertical; }
   .field input:focus, .field select:focus, .field textarea:focus{ outline:none; border-color:var(--rust); }
+  .field-row{ display:flex; gap:10px; }
+  .field-row .field{ flex:1; }
+
+  .chip-grid{ display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-bottom:16px; }
+  .chip{
+    background:var(--ink); border:1.5px solid var(--line); border-radius:14px; padding:13px 10px;
+    text-align:center; font-size:13.5px; font-weight:600;
+  }
+  .chip.active{ border-color:var(--rust); background:rgba(198,112,60,0.12); }
+
+  .form-section{ margin:22px 0 16px; padding-top:18px; border-top:1px solid var(--line); }
+  .form-section:first-of-type{ border-top:none; padding-top:0; margin-top:6px; }
+  .form-section-title{
+    font-family:var(--mono); font-weight:800; font-size:13.5px; margin-bottom:12px;
+    display:flex; align-items:center; gap:7px;
+  }
+  .form-section-title small{ color:var(--slate); font-weight:500; }
 
   .btn-submit{
     width:100%; padding:15px; border-radius:14px; background:var(--rust); color:var(--paper);
@@ -168,6 +189,7 @@
     <svg viewBox="0 0 400 400"><rect width="400" height="400" rx="72" fill="#14110D"/><line x1="108" y1="108" x2="292" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><line x1="292" y1="108" x2="108" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><circle cx="108" cy="108" r="27" fill="#C6703C"/><circle cx="292" cy="108" r="27" fill="#C6703C"/><circle cx="108" cy="292" r="27" fill="#C6703C"/><circle cx="292" cy="292" r="27" fill="#C6703C"/><circle cx="200" cy="200" r="33" fill="#C6703C"/></svg>
     Agenda Clientes
   </div>
+  <button class="whoami" id="whoamiBtn">👤 <span id="whoamiName">—</span></button>
 </header>
 
 <div class="viewtabs">
@@ -228,6 +250,32 @@
   const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const DIAS_SEMANA = ['L','M','X','J','V','S','D'];
   const fechaBonita = s => s ? new Date(s+'T00:00:00').toLocaleDateString('es-ES', {day:'numeric', month:'long', year:'numeric'}) : '';
+  const money = n => (Number(n)||0).toLocaleString('es-ES', {style:'currency', currency:'EUR'});
+
+  // Misma identidad que Control NFC — mismo dominio, misma localStorage,
+  // así que si ya dijiste quién eres allí, aquí ya lo sabe.
+  let SOCIO = localStorage.getItem('nexus_socio');
+  function askName(){
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `<div class="modal-box">
+      <h3>¿Quién eres?</h3>
+      <p style="font-size:13.5px; color:var(--paper-dim); margin-bottom:18px;">Se queda guardado en este móvil, no hace falta volver a escribirlo.</p>
+      <div class="field"><input type="text" id="nameInput" placeholder="Tu nombre"></div>
+      <button class="btn-submit" id="nameSubmit">Continuar</button>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('nameSubmit').onclick = () => {
+      const v = document.getElementById('nameInput').value.trim();
+      if (!v) return;
+      localStorage.setItem('nexus_socio', v);
+      SOCIO = v;
+      document.getElementById('whoamiName').textContent = v;
+      overlay.remove();
+    };
+  }
+  if (!SOCIO) askName(); else document.getElementById('whoamiName').textContent = SOCIO;
+  document.getElementById('whoamiBtn').onclick = askName;
 
   document.querySelectorAll('.viewtab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -249,14 +297,20 @@
 
   let CLIENTES = [];
   let REUNIONES = [];
+  let PRODUCTOS = [];
+  let TARIFAS_REDES = [];
 
   async function cargarTodo(){
-    const [{ data: clientes }, { data: reuniones }] = await Promise.all([
+    const [{ data: clientes }, { data: reuniones }, { data: productos }, { data: tarifas }] = await Promise.all([
       sb.from('clientes_crm').select('*').order('nombre'),
       sb.from('reuniones').select('*, clientes_crm(nombre)').order('fecha', { ascending: false }),
+      sb.from('productos').select('*').eq('activo', true).order('nombre'),
+      sb.from('tarifas_redes_sociales').select('*').order('videos'),
     ]);
     CLIENTES = clientes || [];
     REUNIONES = reuniones || [];
+    PRODUCTOS = productos || [];
+    TARIFAS_REDES = tarifas || [];
     renderCalendar();
     renderClientesList();
     if (clienteAbiertoId) abrirClienteDetail(clienteAbiertoId, false);
@@ -322,6 +376,7 @@
     document.getElementById('diaReuniones').innerHTML = reus.map(r => `
       <div class="reunion-item">
         <div class="reunion-fecha">${r.hora ? r.hora.slice(0,5) + ' · ' : ''}${r.clientes_crm?.nombre || '—'}</div>
+        ${r.producto_vendido ? `<div class="reunion-txt">💰 <b>Vendido:</b> ${r.producto_vendido} — ${money(r.precio_vendido)}</div>` : ''}
         ${r.resumen ? `<div class="reunion-txt"><b>Resumen:</b> ${r.resumen}</div>` : ''}
         ${r.acordado ? `<div class="reunion-txt"><b>Acordado:</b> ${r.acordado}</div>` : ''}
       </div>
@@ -387,6 +442,7 @@
         ${!reus.length ? '<div class="empty">Sin reuniones registradas todavía.</div>' : reus.map(r => `
           <div class="reunion-item">
             <div class="reunion-fecha">${fechaBonita(r.fecha)}${r.hora ? ' · ' + r.hora.slice(0,5) : ''}</div>
+            ${r.producto_vendido ? `<div class="reunion-txt">💰 <b>Vendido:</b> ${r.producto_vendido} — ${money(r.precio_vendido)}</div>` : ''}
             ${r.resumen ? `<div class="reunion-txt"><b>Resumen:</b> ${r.resumen}</div>` : ''}
             ${r.acordado ? `<div class="reunion-txt"><b>Acordado:</b> ${r.acordado}</div>` : ''}
           </div>
@@ -455,13 +511,110 @@
     const overlay = showModal(`
       <h3>Nueva reunión</h3>
       <div class="field"><label>Cliente</label><select id="rCliente">${clientesOpts}</select></div>
-      <div class="field"><label>Fecha</label><input type="date" id="rFecha" value="${fechaPre || new Date().toISOString().slice(0,10)}"></div>
-      <div class="field"><label>Hora (opcional)</label><input type="time" id="rHora"></div>
-      <div class="field"><label>Resumen de la reunión</label><textarea id="rResumen" placeholder="De qué habéis hablado"></textarea></div>
-      <div class="field"><label>Qué se acordó</label><textarea id="rAcordado" placeholder="Compromisos, próximos pasos…"></textarea></div>
+      <div class="field-row">
+        <div class="field"><label>Fecha</label><input type="date" id="rFecha" value="${fechaPre || new Date().toISOString().slice(0,10)}"></div>
+        <div class="field"><label>Hora (opcional)</label><input type="time" id="rHora"></div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title">💰 ¿Qué se ha vendido? <small>(opcional)</small></div>
+        <div class="chip-grid" id="rProductoGrid"></div>
+        <div class="field" id="rRedesField" style="display:none;">
+          <label>Vídeos al mes</label>
+          <select id="rRedesTarifaSelect"></select>
+          <div id="rRedesOtroBox" style="display:none; margin-top:14px;">
+            <div class="field"><label>Nº de vídeos</label><input type="number" id="rRedesOtroVideos" placeholder="0" inputmode="numeric"></div>
+            <div class="field"><label>Precio (€)</label><input type="number" step="0.01" id="rRedesOtroPrecio" placeholder="0.00" inputmode="decimal"></div>
+            <button class="btn-submit ghost" type="button" id="rRedesGuardarTarifa">Guardar como tarifa fija</button>
+          </div>
+        </div>
+        <div class="field" id="rPrecioField" style="display:none;"><label>Precio (€)</label><input type="number" step="0.01" id="rPrecio" placeholder="0.00" inputmode="decimal"></div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title">🤝 Qué os habéis dicho</div>
+        <div class="field"><label>Resumen de la reunión</label><textarea id="rResumen" placeholder="De qué habéis hablado"></textarea></div>
+        <div class="field"><label>Qué se acordó</label><textarea id="rAcordado" placeholder="Compromisos, próximos pasos…"></textarea></div>
+      </div>
+
       <button class="btn-submit teal" id="rGuardar">Guardar reunión</button>
       <button class="btn-submit ghost" id="rCancelar" style="margin-top:8px;">Cancelar</button>
     `);
+
+    let rProductoId = null;
+    let rRedesVideos = null;
+
+    const gridEl = document.getElementById('rProductoGrid');
+    gridEl.innerHTML = '<div class="chip active" data-id="">Nada</div>'
+      + PRODUCTOS.map(p => `<div class="chip" data-id="${p.id}">${p.nombre}</div>`).join('');
+
+    function renderRedesSelect(preseleccion){
+      const sel = document.getElementById('rRedesTarifaSelect');
+      sel.innerHTML = TARIFAS_REDES.map(t => `<option value="${t.videos}">${t.videos} vídeos — ${money(t.precio)}</option>`).join('')
+        + '<option value="otro">Otro</option>';
+      if (preseleccion != null) sel.value = String(preseleccion);
+    }
+
+    function aplicarRedesSeleccion(){
+      const sel = document.getElementById('rRedesTarifaSelect');
+      const otroBox = document.getElementById('rRedesOtroBox');
+      if (sel.value === 'otro'){
+        otroBox.style.display = 'block';
+        const videos = parseInt(document.getElementById('rRedesOtroVideos').value, 10);
+        rRedesVideos = isNaN(videos) ? null : videos;
+        document.getElementById('rPrecio').value = document.getElementById('rRedesOtroPrecio').value || '';
+      } else {
+        otroBox.style.display = 'none';
+        const tarifa = TARIFAS_REDES.find(t => String(t.videos) === sel.value);
+        rRedesVideos = tarifa ? tarifa.videos : null;
+        document.getElementById('rPrecio').value = tarifa ? tarifa.precio : '';
+      }
+    }
+
+    function onProductoChange(){
+      const producto = PRODUCTOS.find(p => p.id === rProductoId);
+      document.getElementById('rRedesField').style.display = 'none';
+      document.getElementById('rPrecioField').style.display = 'none';
+      document.getElementById('rPrecio').value = '';
+      rRedesVideos = null;
+      if (!producto) return;
+      if (producto.nombre === 'Redes Sociales'){
+        document.getElementById('rRedesField').style.display = 'block';
+        renderRedesSelect(TARIFAS_REDES[0]?.videos);
+        aplicarRedesSeleccion();
+      } else {
+        document.getElementById('rPrecioField').style.display = 'block';
+        if (Number(producto.precio) > 0) document.getElementById('rPrecio').value = producto.precio;
+      }
+    }
+
+    gridEl.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        gridEl.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        rProductoId = chip.dataset.id || null;
+        onProductoChange();
+      });
+    });
+    document.getElementById('rRedesTarifaSelect').addEventListener('change', aplicarRedesSeleccion);
+    document.getElementById('rRedesOtroVideos').addEventListener('input', aplicarRedesSeleccion);
+    document.getElementById('rRedesOtroPrecio').addEventListener('input', aplicarRedesSeleccion);
+    document.getElementById('rRedesGuardarTarifa').addEventListener('click', async () => {
+      const videos = parseInt(document.getElementById('rRedesOtroVideos').value, 10);
+      const precio = parseFloat(document.getElementById('rRedesOtroPrecio').value);
+      if (isNaN(videos) || videos <= 0) return alert('Pon el número de vídeos');
+      if (isNaN(precio) || precio < 0) return alert('Pon un precio válido');
+      const btn = document.getElementById('rRedesGuardarTarifa');
+      btn.disabled = true; btn.textContent = 'Guardando…';
+      const { error } = await sb.from('tarifas_redes_sociales').upsert({ videos, precio }, { onConflict: 'videos' });
+      btn.disabled = false; btn.textContent = 'Guardar como tarifa fija';
+      if (error){ alert('Error al guardar la tarifa: ' + error.message); return; }
+      const { data: tarifas } = await sb.from('tarifas_redes_sociales').select('*').order('videos');
+      TARIFAS_REDES = tarifas || [];
+      renderRedesSelect(videos);
+      aplicarRedesSeleccion();
+    });
+
     document.getElementById('rCancelar').addEventListener('click', () => overlay.remove());
     document.getElementById('rGuardar').addEventListener('click', async () => {
       const cliente_id = document.getElementById('rCliente').value;
@@ -472,9 +625,32 @@
       if (!cliente_id) return alert('Elige un cliente');
       if (!fecha) return alert('Pon la fecha de la reunión');
 
+      const producto = PRODUCTOS.find(p => p.id === rProductoId);
+      let productoVendidoLabel = null, precioVendido = null, ventaId = null;
+
+      if (producto){
+        const precio = parseFloat(document.getElementById('rPrecio').value);
+        if (isNaN(precio) || precio < 0) return alert('Pon el precio de lo vendido (o elige "Nada" si no se ha vendido nada)');
+        if (!SOCIO){ askName(); return; }
+        productoVendidoLabel = producto.nombre + (producto.nombre === 'Redes Sociales' && rRedesVideos ? ` (${rRedesVideos} vídeos/mes)` : '');
+        precioVendido = precio;
+
+        const clienteNombre = CLIENTES.find(c => c.id === cliente_id)?.nombre || '';
+        const { data: ventaData, error: ventaError } = await sb.from('ventas').insert({
+          producto_id: producto.id, cliente: clienteNombre, precio_venta: precio,
+          notas: 'Vendido en reunión de la Agenda', socio: SOCIO,
+          entregado: true, estado: 'entregado', origen: 'equipo', pedido_id: crypto.randomUUID(),
+        }).select('id').single();
+        if (ventaError){ alert('Error al registrar la venta: ' + ventaError.message); return; }
+        ventaId = ventaData.id;
+      }
+
       const btn = document.getElementById('rGuardar');
       btn.disabled = true; btn.textContent = 'Guardando…';
-      const { error } = await sb.from('reuniones').insert({ cliente_id, fecha, hora, resumen, acordado });
+      const { error } = await sb.from('reuniones').insert({
+        cliente_id, fecha, hora, resumen, acordado,
+        producto_vendido: productoVendidoLabel, precio_vendido: precioVendido, venta_id: ventaId,
+      });
       btn.disabled = false; btn.textContent = 'Guardar reunión';
       if (error){ alert('Error: ' + error.message); return; }
       overlay.remove();
@@ -527,6 +703,7 @@
     } else {
       ordenadas.forEach(r => {
         addLine(`${fechaBonita(r.fecha)}${r.hora ? ' · ' + r.hora.slice(0,5) : ''}`, { size: 12, bold: true, gap: 2 });
+        if (r.producto_vendido) addLine(`Vendido: ${r.producto_vendido} — ${money(r.precio_vendido)}`, { gap: 2 });
         if (r.resumen) addLine(`Resumen: ${r.resumen}`, { gap: 2 });
         if (r.acordado) addLine(`Acordado: ${r.acordado}`, { gap: 2 });
         y += 5;
