@@ -156,6 +156,10 @@
   .reunion-fecha{ font-family:var(--mono); font-weight:700; font-size:13px; color:var(--teal); margin-bottom:6px; }
   .reunion-txt{ font-size:13.5px; color:var(--paper-dim); line-height:1.5; margin-top:4px; }
   .reunion-txt b{ color:var(--paper); font-weight:600; }
+  .btn-cancelar-reunion{
+    display:block; margin-top:10px; background:none; border:none; padding:0;
+    font-size:12px; font-weight:600; color:var(--bad); text-decoration:underline; text-underline-offset:2px;
+  }
 
   .detail-actions{ display:flex; gap:8px; margin-top:14px; margin-bottom:18px; flex-wrap:wrap; }
   .detail-actions button{ flex:1; min-width:140px; }
@@ -251,6 +255,14 @@
   const DIAS_SEMANA = ['L','M','X','J','V','S','D'];
   const fechaBonita = s => s ? new Date(s+'T00:00:00').toLocaleDateString('es-ES', {day:'numeric', month:'long', year:'numeric'}) : '';
   const money = n => (Number(n)||0).toLocaleString('es-ES', {style:'currency', currency:'EUR'});
+  // Fecha de HOY en el huso horario local, en formato YYYY-MM-DD. OJO:
+  // Date#toISOString() da la fecha en UTC, que cerca de medianoche (hora
+  // española) puede ser un día distinto al de verdad — por eso no se usa
+  // para "qué día es hoy".
+  const hoyLocalISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  };
 
   // Misma identidad que Control NFC — mismo dominio, misma localStorage,
   // así que si ya dijiste quién eres allí, aquí ya lo sabe.
@@ -340,7 +352,7 @@
       porDia.get(r.fecha).push(r);
     });
 
-    const hoyStr = new Date().toISOString().slice(0, 10);
+    const hoyStr = hoyLocalISO();
     let html = DIAS_SEMANA.map(d => `<div class="cal-dow">${d}</div>`).join('');
     for (let i = 0; i < offset; i++) html += `<div class="cal-cell empty"></div>`;
     for (let d = 1; d <= diasEnMes; d++){
@@ -379,8 +391,12 @@
         ${r.producto_vendido ? `<div class="reunion-txt">💰 <b>Vendido:</b> ${r.producto_vendido} — ${money(r.precio_vendido)}</div>` : ''}
         ${r.resumen ? `<div class="reunion-txt"><b>Resumen:</b> ${r.resumen}</div>` : ''}
         ${r.acordado ? `<div class="reunion-txt"><b>Acordado:</b> ${r.acordado}</div>` : ''}
+        <button class="btn-cancelar-reunion" data-id="${r.id}">Cancelar reunión</button>
       </div>
     `).join('');
+    document.querySelectorAll('#diaReuniones .btn-cancelar-reunion').forEach(btn => {
+      btn.addEventListener('click', () => cancelarReunion(btn.dataset.id));
+    });
     if (abrirPanel) document.getElementById('diaWrap').classList.add('is-open');
   }
   document.getElementById('diaClose').addEventListener('click', () => {
@@ -441,6 +457,7 @@
         <button class="btn-submit teal" id="btnNuevaReunionCliente">+ Reunión</button>
         <button class="btn-submit ghost" id="btnEditarCliente">Editar</button>
         <button class="btn-submit ghost" id="btnFichaPDF">📄 Generar ficha (PDF)</button>
+        <button class="btn-submit ghost" id="btnEliminarCliente" style="color:var(--bad); border-color:var(--bad);">🗑️ Eliminar cliente</button>
       </div>
       <div class="sec-title" style="font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin:20px 0 10px;">Compras</div>
       <div id="clienteComprasList"><div class="empty">Cargando…</div></div>
@@ -452,6 +469,7 @@
             ${r.producto_vendido ? `<div class="reunion-txt">💰 <b>Vendido:</b> ${r.producto_vendido} — ${money(r.precio_vendido)}</div>` : ''}
             ${r.resumen ? `<div class="reunion-txt"><b>Resumen:</b> ${r.resumen}</div>` : ''}
             ${r.acordado ? `<div class="reunion-txt"><b>Acordado:</b> ${r.acordado}</div>` : ''}
+            <button class="btn-cancelar-reunion" data-id="${r.id}">Cancelar reunión</button>
           </div>
         `).join('')}
       </div>
@@ -459,6 +477,10 @@
     document.getElementById('btnNuevaReunionCliente').addEventListener('click', () => abrirFormReunion(clienteId, null));
     document.getElementById('btnEditarCliente').addEventListener('click', () => abrirFormCliente(cliente));
     document.getElementById('btnFichaPDF').addEventListener('click', () => generarFichaPDF(cliente, reus, comprasClienteActual));
+    document.getElementById('btnEliminarCliente').addEventListener('click', () => eliminarCliente(cliente));
+    document.querySelectorAll('#clienteReunionesList .btn-cancelar-reunion').forEach(btn => {
+      btn.addEventListener('click', () => cancelarReunion(btn.dataset.id));
+    });
 
     if (abrirPanel) document.getElementById('clienteWrap').classList.add('is-open');
     renderClientesList();
@@ -544,7 +566,7 @@
       <h3>Nueva reunión</h3>
       <div class="field"><label>Cliente</label><select id="rCliente">${clientesOpts}</select></div>
       <div class="field-row">
-        <div class="field"><label>Fecha</label><input type="date" id="rFecha" value="${fechaPre || new Date().toISOString().slice(0,10)}"></div>
+        <div class="field"><label>Fecha</label><input type="date" id="rFecha" value="${fechaPre || hoyLocalISO()}"></div>
         <div class="field"><label>Hora (opcional)</label><input type="time" id="rHora"></div>
       </div>
 
@@ -688,6 +710,38 @@
       overlay.remove();
       await cargarTodo();
     });
+  }
+
+  // Cancelar una reunión no toca la venta que se haya podido registrar
+  // desde ella — esa venta ya es real y queda tal cual en el historial
+  // de compras, solo se borra la reunión (la nota de la cita en sí).
+  async function cancelarReunion(reunionId){
+    if (!confirm('¿Cancelar esta reunión? Esto no se puede deshacer. Si se vendió algo en ella, la venta se queda registrada igualmente.')) return;
+    const { error } = await sb.from('reuniones').delete().eq('id', reunionId);
+    if (error){ alert('Error al cancelar: ' + error.message); return; }
+    await cargarTodo();
+  }
+
+  // Eliminar un cliente borra también sus reuniones (no tendría sentido
+  // conservarlas sin cliente al que pertenecen). Las ventas ya
+  // registradas NO se tocan: se quedan en el histórico, simplemente
+  // sueltas de la ficha de cliente.
+  async function eliminarCliente(cliente){
+    const reunionesDelCliente = REUNIONES.filter(r => r.cliente_id === cliente.id);
+    const aviso = reunionesDelCliente.length
+      ? `¿Eliminar a "${cliente.nombre}"? Se borrarán también sus ${reunionesDelCliente.length} reunión${reunionesDelCliente.length===1?'':'es'}. Las ventas que ya se le hayan registrado no se tocan. Esto no se puede deshacer.`
+      : `¿Eliminar a "${cliente.nombre}"? Esto no se puede deshacer.`;
+    if (!confirm(aviso)) return;
+    if (reunionesDelCliente.length){
+      const { error: errorReuniones } = await sb.from('reuniones').delete().eq('cliente_id', cliente.id);
+      if (errorReuniones){ alert('Error al borrar sus reuniones: ' + errorReuniones.message); return; }
+    }
+    const { error } = await sb.from('clientes_crm').delete().eq('id', cliente.id);
+    if (error){ alert('Error al eliminar el cliente: ' + error.message); return; }
+    clienteAbiertoId = null;
+    document.getElementById('clienteWrap').classList.remove('is-open');
+    document.getElementById('clienteDetailContent').innerHTML = '<p class="empty" style="padding:20px 0;">Elige un cliente de la lista para ver su ficha.</p>';
+    await cargarTodo();
   }
 
   // =====================================================================
