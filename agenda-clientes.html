@@ -418,7 +418,12 @@
   }
   document.getElementById('clienteBusqueda').addEventListener('input', renderClientesList);
 
-  function abrirClienteDetail(clienteId, abrirPanel = true){
+  // Compras reales (tabla ventas) del cliente actualmente abierto — se
+  // recarga cada vez que se abre una ficha, para que salga siempre lo
+  // último vendido tanto desde "Vender" como desde una reunión de aquí.
+  let comprasClienteActual = [];
+
+  async function abrirClienteDetail(clienteId, abrirPanel = true){
     clienteAbiertoId = clienteId;
     const cliente = CLIENTES.find(c => c.id === clienteId);
     if (!cliente) return;
@@ -437,6 +442,8 @@
         <button class="btn-submit ghost" id="btnEditarCliente">Editar</button>
         <button class="btn-submit ghost" id="btnFichaPDF">📄 Generar ficha (PDF)</button>
       </div>
+      <div class="sec-title" style="font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin:20px 0 10px;">Compras</div>
+      <div id="clienteComprasList"><div class="empty">Cargando…</div></div>
       <div class="sec-title" style="font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin:20px 0 10px;">Historial de reuniones</div>
       <div id="clienteReunionesList">
         ${!reus.length ? '<div class="empty">Sin reuniones registradas todavía.</div>' : reus.map(r => `
@@ -451,10 +458,35 @@
     `;
     document.getElementById('btnNuevaReunionCliente').addEventListener('click', () => abrirFormReunion(clienteId, null));
     document.getElementById('btnEditarCliente').addEventListener('click', () => abrirFormCliente(cliente));
-    document.getElementById('btnFichaPDF').addEventListener('click', () => generarFichaPDF(cliente, reus));
+    document.getElementById('btnFichaPDF').addEventListener('click', () => generarFichaPDF(cliente, reus, comprasClienteActual));
 
     if (abrirPanel) document.getElementById('clienteWrap').classList.add('is-open');
     renderClientesList();
+
+    const { data: compras } = await sb.from('ventas')
+      .select('*, productos(nombre)')
+      .eq('cliente_id', clienteId)
+      .order('created_at', { ascending: false });
+    comprasClienteActual = compras || [];
+    if (clienteAbiertoId !== clienteId) return; // el usuario ya abrió otra ficha mientras cargaba
+    const comprasEl = document.getElementById('clienteComprasList');
+    if (!comprasEl) return;
+    if (!comprasClienteActual.length){
+      comprasEl.innerHTML = '<div class="empty">Sin compras registradas todavía.</div>';
+    } else {
+      const total = comprasClienteActual.reduce((sum, v) => sum + Number(v.precio_venta || 0), 0);
+      comprasEl.innerHTML = `
+        <div class="reunion-item" style="background:rgba(31,158,140,0.10); border:1px solid rgba(31,158,140,0.3);">
+          <div class="reunion-txt"><b>Total gastado:</b> ${money(total)} en ${comprasClienteActual.length} venta${comprasClienteActual.length===1?'':'s'}</div>
+        </div>
+        ${comprasClienteActual.map(v => `
+          <div class="reunion-item">
+            <div class="reunion-fecha">${fechaBonita(v.fecha || v.created_at?.slice(0,10))}</div>
+            <div class="reunion-txt">💰 <b>${v.productos?.nombre || 'Producto'}</b> — ${money(v.precio_venta)}${v.entregado ? '' : ' · pendiente de entrega'}</div>
+          </div>
+        `).join('')}
+      `;
+    }
   }
   document.getElementById('clienteClose').addEventListener('click', () => {
     document.getElementById('clienteWrap').classList.remove('is-open');
@@ -637,7 +669,7 @@
 
         const clienteNombre = CLIENTES.find(c => c.id === cliente_id)?.nombre || '';
         const { data: ventaData, error: ventaError } = await sb.from('ventas').insert({
-          producto_id: producto.id, cliente: clienteNombre, precio_venta: precio,
+          producto_id: producto.id, cliente: clienteNombre, cliente_id, precio_venta: precio,
           notas: 'Vendido en reunión de la Agenda', socio: SOCIO,
           entregado: true, estado: 'entregado', origen: 'equipo', pedido_id: crypto.randomUUID(),
         }).select('id').single();
@@ -661,55 +693,149 @@
   // =====================================================================
   // FICHA DE CLIENTE EN PDF — todo en el navegador, sin backend (jsPDF)
   // =====================================================================
-  function generarFichaPDF(cliente, reunionesCliente){
+  const PDF_INK = [20, 17, 13];
+  const PDF_RUST = [198, 112, 60];
+  const PDF_TEAL = [31, 158, 140];
+  const PDF_SLATE = [130, 122, 110];
+  const PDF_PAPER = [244, 239, 228];
+  const PDF_LINE = [225, 218, 204];
+
+  function generarFichaPDF(cliente, reunionesCliente, comprasCliente){
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    const margin = 18;
+    const margin = 16;
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const maxWidth = pageWidth - margin * 2;
     let y = margin;
+    let pageNum = 1;
 
-    function addLine(text, { size = 11, bold = false, gap = 6 } = {}){
+    function footer(){
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+      doc.setTextColor(...PDF_SLATE);
+      doc.text('Nexus · Agenda de clientes', margin, pageHeight - 10);
+      doc.text(`Página ${pageNum}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
+    }
+
+    function ensureSpace(needed){
+      if (y + needed > pageHeight - 20){
+        footer();
+        doc.addPage();
+        pageNum++;
+        y = margin;
+      }
+    }
+
+    function text(txt, x, size, { bold = false, color = PDF_INK, align = 'left', atY = null } = {}){
       doc.setFont('helvetica', bold ? 'bold' : 'normal');
       doc.setFontSize(size);
-      const lines = doc.splitTextToSize(String(text), maxWidth);
-      lines.forEach(line => {
-        if (y > pageHeight - margin){ doc.addPage(); y = margin; }
-        doc.text(line, margin, y);
-        y += size * 0.52;
+      doc.setTextColor(...color);
+      doc.text(String(txt), x, atY == null ? y : atY, { align });
+    }
+    const fechaCorta = s => s ? new Date(s+'T00:00:00').toLocaleDateString('es-ES') : '';
+
+    function paragraph(label, valor, { size = 10, gap = 5 } = {}){
+      const lines = doc.splitTextToSize(String(valor), maxWidth - (label ? 30 : 0));
+      lines.forEach((line, i) => {
+        ensureSpace(size * 0.6);
+        if (i === 0 && label){
+          text(label, margin, size, { bold: true, color: PDF_RUST });
+          text(line, margin + 30, size, { color: PDF_INK });
+        } else {
+          text(line, label ? margin + 30 : margin, size, { color: PDF_INK });
+        }
+        y += size * 0.55;
       });
       y += gap;
     }
 
-    addLine(`Ficha de cliente — ${cliente.nombre}`, { size: 18, bold: true, gap: 2 });
-    addLine(`Generada el ${new Date().toLocaleDateString('es-ES')}`, { size: 9, gap: 10 });
-
-    if (cliente.contacto) addLine(`Contacto: ${cliente.contacto}`, { gap: 3 });
-    if (cliente.telefono) addLine(`Teléfono: ${cliente.telefono}`, { gap: 3 });
-    if (cliente.email) addLine(`Email: ${cliente.email}`, { gap: 3 });
-    if (cliente.notas){
-      y += 3;
-      addLine('Notas generales', { size: 12, bold: true, gap: 3 });
-      addLine(cliente.notas, { gap: 8 });
+    function sectionTitle(txt, color){
+      ensureSpace(16);
+      doc.setFillColor(...color);
+      doc.rect(margin, y - 4.5, 3, 11, 'F');
+      text(txt, margin + 7, 12.5, { bold: true, size: 12.5, color: PDF_INK });
+      y += 10;
     }
 
-    y += 4;
-    addLine('Historial de reuniones', { size: 14, bold: true, gap: 6 });
+    // ---- Cabecera con marca ----
+    doc.setFillColor(...PDF_INK);
+    doc.rect(0, 0, pageWidth, 34, 'F');
+    text('NEXUS', margin, 11, { size: 10, bold: true, color: PDF_RUST, atY: 13 });
+    text('Ficha de cliente', margin, 18, { bold: true, color: PDF_PAPER, atY: 25 });
+    text(`Generada el ${new Date().toLocaleDateString('es-ES')}`, pageWidth - margin, 9, { color: PDF_PAPER, align: 'right', atY: 13 });
+    y = 44;
 
-    const ordenadas = [...reunionesCliente].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+    // ---- Nombre + datos de contacto ----
+    text(cliente.nombre, margin, 17, { size: 16, bold: true, color: PDF_INK });
+    y += 9;
+    if (cliente.contacto) paragraph('Contacto', cliente.contacto, { gap: 2 });
+    if (cliente.telefono) paragraph('Teléfono', cliente.telefono, { gap: 2 });
+    if (cliente.email) paragraph('Email', cliente.email, { gap: 2 });
+    y += 2;
+    if (cliente.notas){
+      ensureSpace(14);
+      doc.setDrawColor(...PDF_LINE);
+      const notasLines = doc.splitTextToSize(cliente.notas, maxWidth - 12);
+      const boxHeight = notasLines.length * 5 + 14;
+      ensureSpace(boxHeight);
+      doc.roundedRect(margin, y, maxWidth, boxHeight, 2, 2, 'S');
+      text('Notas generales', margin + 6, 9, { bold: true, color: PDF_RUST, atY: y + 8 });
+      let ny = y + 15;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...PDF_INK);
+      notasLines.forEach(line => { doc.text(line, margin + 6, ny); ny += 5; });
+      y += boxHeight + 8;
+    }
+
+    // ---- Compras ----
+    sectionTitle('Compras', PDF_TEAL);
+    if (!comprasCliente || !comprasCliente.length){
+      paragraph(null, 'Sin compras registradas todavía.', { gap: 8 });
+    } else {
+      const total = comprasCliente.reduce((sum, v) => sum + Number(v.precio_venta || 0), 0);
+      ensureSpace(10);
+      text(`Total: ${money(total)} en ${comprasCliente.length} venta${comprasCliente.length===1?'':'s'}`, margin, 10.5, { bold: true, size: 10.5, color: PDF_TEAL });
+      y += 8;
+      const colFecha = margin, colProducto = margin + 34, colPrecio = pageWidth - margin;
+      ensureSpace(8);
+      text('Fecha', colFecha, 9, { bold: true, size: 8.5, color: PDF_SLATE });
+      text('Producto', colProducto, 9, { bold: true, size: 8.5, color: PDF_SLATE });
+      text('Importe', colPrecio, 9, { bold: true, size: 8.5, color: PDF_SLATE, align: 'right' });
+      y += 4;
+      doc.setDrawColor(...PDF_LINE); doc.line(margin, y, pageWidth - margin, y);
+      y += 6;
+      comprasCliente.forEach(v => {
+        ensureSpace(8);
+        text(fechaCorta(v.fecha || (v.created_at || '').slice(0,10)), colFecha, 10, { size: 9.5 });
+        text(v.productos?.nombre || 'Producto', colProducto, 10, { size: 9.5 });
+        text(money(v.precio_venta), colPrecio, 10, { size: 9.5, align: 'right' });
+        y += 7;
+      });
+      y += 4;
+    }
+
+    // ---- Historial de reuniones ----
+    sectionTitle('Historial de reuniones', PDF_RUST);
+    const ordenadas = [...(reunionesCliente || [])].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
     if (!ordenadas.length){
-      addLine('Sin reuniones registradas todavía.');
+      paragraph(null, 'Sin reuniones registradas todavía.', { gap: 8 });
     } else {
       ordenadas.forEach(r => {
-        addLine(`${fechaBonita(r.fecha)}${r.hora ? ' · ' + r.hora.slice(0,5) : ''}`, { size: 12, bold: true, gap: 2 });
-        if (r.producto_vendido) addLine(`Vendido: ${r.producto_vendido} — ${money(r.precio_vendido)}`, { gap: 2 });
-        if (r.resumen) addLine(`Resumen: ${r.resumen}`, { gap: 2 });
-        if (r.acordado) addLine(`Acordado: ${r.acordado}`, { gap: 2 });
-        y += 5;
+        ensureSpace(14);
+        doc.setFillColor(...PDF_RUST);
+        doc.circle(margin + 1, y - 1.5, 1.1, 'F');
+        text(`${fechaBonita(r.fecha)}${r.hora ? ' · ' + r.hora.slice(0,5) : ''}`, margin + 6, 11, { bold: true, size: 10.5, color: PDF_INK });
+        y += 6;
+        if (r.producto_vendido) paragraph('Vendido', `${r.producto_vendido} — ${money(r.precio_vendido)}`, { gap: 2 });
+        if (r.resumen) paragraph('Resumen', r.resumen, { gap: 2 });
+        if (r.acordado) paragraph('Acordado', r.acordado, { gap: 2 });
+        y += 4;
+        ensureSpace(2);
+        doc.setDrawColor(...PDF_LINE); doc.line(margin, y, pageWidth - margin, y);
+        y += 6;
       });
     }
 
+    footer();
     doc.save(`ficha-${cliente.nombre.replace(/\s+/g, '-').toLowerCase()}.pdf`);
   }
 

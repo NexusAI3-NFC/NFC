@@ -278,7 +278,7 @@
     <h2 style="font-size:19px; margin-bottom:16px;">Registrar venta</h2>
     <div class="stock-flag" id="stockFlag">⚠ Algo de esto no tiene stock. Confirma que aún así quieres registrar el pedido.</div>
 
-    <div class="field"><label>Cliente</label><input type="text" id="ventaCliente" placeholder="Nombre del negocio o persona"></div>
+    <div class="field"><label>Cliente</label><input type="text" id="ventaCliente" list="clientesDatalist" placeholder="Nombre del negocio o persona" autocomplete="off"><datalist id="clientesDatalist"></datalist></div>
 
     <div class="sec-title" style="margin-top:0;">Productos de este pedido</div>
     <div id="lineasList"></div>
@@ -596,6 +596,7 @@
   let STOCK = [];
   let GLOBAL = null;
   let PENDIENTES = [];
+  let CLIENTES_CRM = [];
   const money = n => (Number(n)||0).toLocaleString('es-ES', {style:'currency', currency:'EUR'});
   const fechaBonita = s => s ? new Date(s+'T00:00:00').toLocaleDateString('es-ES', {day:'numeric', month:'short'}) : '';
 
@@ -603,23 +604,48 @@
   let gastoProductoId = null;
 
   async function cargarTodo(){
-    const [{data: productos}, {data: stock}, {data: global}, {data: pendientes}, {data: tarifas}] = await Promise.all([
+    const [{data: productos}, {data: stock}, {data: global}, {data: pendientes}, {data: tarifas}, {data: clientesCrm}] = await Promise.all([
       sb.from('productos').select('*').eq('activo', true).order('nombre'),
       sb.from('resumen_stock').select('*').order('nombre'),
       sb.from('resumen_global').select('*').single(),
       sb.from('pedidos_pendientes').select('*').order('fecha_limite', {ascending:true, nullsFirst:false}),
       sb.from('tarifas_redes_sociales').select('*').order('videos'),
+      sb.from('clientes_crm').select('*').order('nombre'),
     ]);
     PRODUCTOS = productos || [];
     STOCK = stock || [];
     GLOBAL = global || null;
     PENDIENTES = pendientes || [];
     TARIFAS_REDES = tarifas || [];
+    CLIENTES_CRM = clientesCrm || [];
     detectarPedidosNuevos();
     renderInicio();
     renderProductGrids();
     renderPendientes();
+    renderClientesDatalist();
     cargarHistorial();
+  }
+
+  // Autocompletar el campo "Cliente" de Vender con los clientes ya
+  // dados de alta en la Agenda — no obliga a elegir de la lista, solo
+  // sugiere; si escribes uno nuevo, se crea automáticamente al vender.
+  function renderClientesDatalist(){
+    document.getElementById('clientesDatalist').innerHTML =
+      CLIENTES_CRM.map(c => `<option value="${c.nombre}">`).join('');
+  }
+
+  // Busca el cliente por nombre (sin distinguir mayúsculas/espacios) y,
+  // si no existe todavía en clientes_crm, lo crea — así "Vender" y la
+  // Agenda de clientes siempre hablan del mismo cliente.
+  async function resolverClienteId(nombreCliente){
+    const clave = nombreCliente.trim().toLowerCase();
+    const existente = CLIENTES_CRM.find(c => c.nombre.trim().toLowerCase() === clave);
+    if (existente) return existente.id;
+    const { data, error } = await sb.from('clientes_crm').insert({ nombre: nombreCliente.trim() }).select('id').single();
+    if (error){ console.error('No se pudo crear el cliente en la agenda:', error.message); return null; }
+    CLIENTES_CRM.push({ id: data.id, nombre: nombreCliente.trim() });
+    renderClientesDatalist();
+    return data.id;
   }
 
   function renderInicio(){
@@ -846,9 +872,10 @@
 
     const btn = document.getElementById('ventaSubmit');
     btn.disabled = true; btn.textContent = 'Guardando…';
+    const clienteId = await resolverClienteId(cliente);
     const pedidoId = crypto.randomUUID();
     const filas = lineas.map(l => ({
-      producto_id: l.productoId, cliente, precio_venta: l.precio, notas, socio: SOCIO,
+      producto_id: l.productoId, cliente, cliente_id: clienteId, precio_venta: l.precio, notas, socio: SOCIO,
       entregado: entrega !== 'pendiente',
       estado: entrega === 'pendiente' ? 'pedido' : 'entregado',
       pedido_id: pedidoId,
@@ -993,6 +1020,7 @@
     .on('postgres_changes', { event: '*', schema: 'public', table: 'compras' }, cargarTodo)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos_generales' }, cargarTodo)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'ahorros' }, cargarTodo)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes_crm' }, cargarTodo)
     .subscribe();
 
   // =====================================================================
