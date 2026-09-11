@@ -272,9 +272,6 @@
 
     <div class="sec-title">Stock real (lo que compráis)</div>
     <div id="stockList"></div>
-
-    <div class="sec-title">Packs (se arman con el stock de arriba)</div>
-    <div id="packList"></div>
   </section>
 
   <section class="view" id="view-vender">
@@ -286,10 +283,19 @@
     <div class="sec-title" style="margin-top:0;">Productos de este pedido</div>
     <div id="lineasList"></div>
 
-    <div class="field"><label>Producto o pack</label>
+    <div class="field"><label>Producto</label>
       <div class="chip-grid" id="ventaProductGrid"></div>
     </div>
-    <div class="field"><label>Precio de este producto (€)</label><input type="number" step="0.01" id="ventaPrecio" placeholder="0.00" inputmode="decimal"></div>
+    <div class="field" id="redesSocialesField" style="display:none;">
+      <label>Vídeos al mes</label>
+      <select id="redesTarifaSelect" style="width:100%; background:var(--ink-soft); border:1px solid var(--line); border-radius:12px; padding:14px 15px; color:var(--paper); font-family:var(--sans); font-size:16px;"></select>
+      <div id="redesOtroBox" style="display:none; margin-top:14px;">
+        <div class="field"><label>Nº de vídeos</label><input type="number" id="redesOtroVideos" placeholder="0" inputmode="numeric"></div>
+        <div class="field"><label>Precio (€)</label><input type="number" step="0.01" id="redesOtroPrecio" placeholder="0.00" inputmode="decimal"></div>
+        <button class="btn-submit" id="redesGuardarTarifaBtn" type="button" style="background:var(--ink-softer); border:1.5px dashed var(--gold); color:var(--gold);">Guardar como tarifa fija</button>
+      </div>
+    </div>
+    <div class="field" id="ventaPrecioField"><label>Precio de este producto (€)</label><input type="number" step="0.01" id="ventaPrecio" placeholder="0.00" inputmode="decimal"></div>
     <button class="btn-submit" id="addLineaBtn" style="background:var(--ink-softer); border:1.5px dashed var(--line); margin-bottom:22px;">+ Añadir otro producto al pedido</button>
 
     <div class="field"><label>Notas (opcional)</label><input type="text" id="ventaNotas" placeholder="Ej: link personalizado peluquería"></div>
@@ -495,7 +501,11 @@
     const precio = parseFloat(document.getElementById('ventaPrecio').value);
     if (!ventaProductoId || isNaN(precio) || precio < 0) return null;
     const producto = PRODUCTOS.find(p => p.id === ventaProductoId);
-    return { productoId: ventaProductoId, nombre: producto?.nombre || '—', tipo: producto?.tipo, precio };
+    let nombre = producto?.nombre || '—';
+    if (nombre === 'Redes Sociales' && redesVideosElegidos){
+      nombre += ` (${redesVideosElegidos} vídeos/mes)`;
+    }
+    return { productoId: ventaProductoId, nombre, tipo: producto?.tipo, precio };
   }
 
   function limpiarPickerProducto(){
@@ -503,7 +513,76 @@
     document.getElementById('ventaPrecio').value = '';
     ventaProductoId = null;
     document.getElementById('stockFlag').style.display = 'none';
+    ocultarRedesSociales();
   }
+
+  // =====================================================================
+  // REDES SOCIALES — desplegable de tarifas por nº de vídeos/mes. El
+  // precio real sigue viajando por el input #ventaPrecio (oculto para
+  // este producto), así el resto del flujo de venta no tiene que saber
+  // que existe este caso especial.
+  // =====================================================================
+  let TARIFAS_REDES = [];
+  let redesVideosElegidos = null;
+
+  function ocultarRedesSociales(){
+    document.getElementById('redesSocialesField').style.display = 'none';
+    document.getElementById('ventaPrecioField').style.display = '';
+    document.getElementById('redesOtroBox').style.display = 'none';
+    redesVideosElegidos = null;
+  }
+
+  function renderRedesTarifaSelect(preseleccion){
+    const sel = document.getElementById('redesTarifaSelect');
+    sel.innerHTML = TARIFAS_REDES.map(t => `<option value="${t.videos}">${t.videos} vídeos — ${money(t.precio)}</option>`).join('')
+      + '<option value="otro">Otro</option>';
+    if (preseleccion != null) sel.value = String(preseleccion);
+  }
+
+  function mostrarRedesSociales(){
+    document.getElementById('ventaPrecioField').style.display = 'none';
+    document.getElementById('redesSocialesField').style.display = 'block';
+    document.getElementById('redesOtroVideos').value = '';
+    document.getElementById('redesOtroPrecio').value = '';
+    renderRedesTarifaSelect(TARIFAS_REDES[0]?.videos);
+    aplicarSeleccionRedes();
+  }
+
+  function aplicarSeleccionRedes(){
+    const sel = document.getElementById('redesTarifaSelect');
+    const otroBox = document.getElementById('redesOtroBox');
+    if (sel.value === 'otro'){
+      otroBox.style.display = 'block';
+      const videos = parseInt(document.getElementById('redesOtroVideos').value, 10);
+      redesVideosElegidos = isNaN(videos) ? null : videos;
+      document.getElementById('ventaPrecio').value = document.getElementById('redesOtroPrecio').value || '';
+    } else {
+      otroBox.style.display = 'none';
+      const tarifa = TARIFAS_REDES.find(t => String(t.videos) === sel.value);
+      redesVideosElegidos = tarifa ? tarifa.videos : null;
+      document.getElementById('ventaPrecio').value = tarifa ? tarifa.precio : '';
+    }
+  }
+
+  document.getElementById('redesTarifaSelect').addEventListener('change', aplicarSeleccionRedes);
+  document.getElementById('redesOtroVideos').addEventListener('input', aplicarSeleccionRedes);
+  document.getElementById('redesOtroPrecio').addEventListener('input', aplicarSeleccionRedes);
+
+  document.getElementById('redesGuardarTarifaBtn').addEventListener('click', async () => {
+    const videos = parseInt(document.getElementById('redesOtroVideos').value, 10);
+    const precio = parseFloat(document.getElementById('redesOtroPrecio').value);
+    if (isNaN(videos) || videos <= 0) return alert('Pon el número de vídeos');
+    if (isNaN(precio) || precio < 0) return alert('Pon un precio válido');
+    const btn = document.getElementById('redesGuardarTarifaBtn');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    const { error } = await sb.from('tarifas_redes_sociales').upsert({ videos, precio }, { onConflict: 'videos' });
+    btn.disabled = false; btn.textContent = 'Guardar como tarifa fija';
+    if (error){ alert('Error al guardar la tarifa: ' + error.message); return; }
+    const { data: tarifas } = await sb.from('tarifas_redes_sociales').select('*').order('videos');
+    TARIFAS_REDES = tarifas || [];
+    renderRedesTarifaSelect(videos);
+    aplicarSeleccionRedes();
+  });
 
   document.getElementById('addLineaBtn').addEventListener('click', () => {
     const linea = tomarLineaActual();
@@ -515,7 +594,6 @@
 
   let PRODUCTOS = [];
   let STOCK = [];
-  let PACKS = [];
   let GLOBAL = null;
   let PENDIENTES = [];
   const money = n => (Number(n)||0).toLocaleString('es-ES', {style:'currency', currency:'EUR'});
@@ -525,18 +603,18 @@
   let gastoProductoId = null;
 
   async function cargarTodo(){
-    const [{data: productos}, {data: stock}, {data: packs}, {data: global}, {data: pendientes}] = await Promise.all([
+    const [{data: productos}, {data: stock}, {data: global}, {data: pendientes}, {data: tarifas}] = await Promise.all([
       sb.from('productos').select('*').eq('activo', true).order('nombre'),
       sb.from('resumen_stock').select('*').order('nombre'),
-      sb.from('resumen_packs').select('*').order('nombre'),
       sb.from('resumen_global').select('*').single(),
       sb.from('pedidos_pendientes').select('*').order('fecha_limite', {ascending:true, nullsFirst:false}),
+      sb.from('tarifas_redes_sociales').select('*').order('videos'),
     ]);
     PRODUCTOS = productos || [];
     STOCK = stock || [];
-    PACKS = packs || [];
     GLOBAL = global || null;
     PENDIENTES = pendientes || [];
+    TARIFAS_REDES = tarifas || [];
     detectarPedidosNuevos();
     renderInicio();
     renderProductGrids();
@@ -571,22 +649,6 @@
         ${r.stock_actual <= 0 ? '<div class="pc-stock-warn">⚠ Sin stock</div>' : ''}
       </div>
     `).join('');
-
-    const packList = document.getElementById('packList');
-    packList.innerHTML = !PACKS.length ? '<div class="empty">Sin packs configurados.</div>' : PACKS.map(r => `
-      <div class="product-card pack">
-        <div class="pc-top">
-          <div><div class="pc-name">${r.nombre} <span class="pc-tag-pack">PACK</span></div><div class="pc-cat">${r.categoria}</div></div>
-        </div>
-        <div class="pc-grid">
-          <div class="pc-metric"><div class="v ${r.montables_ahora<=0?'neg':''}">${r.montables_ahora}</div><div class="l">Montables</div></div>
-          <div class="pc-metric"><div class="v">${r.unidades_vendidas}</div><div class="l">Vendidos</div></div>
-          <div class="pc-metric"><div class="v pos">${money(r.ingreso_total)}</div><div class="l">Ingresos</div></div>
-          <div class="pc-metric"><div class="v">—</div><div class="l">Sin stock propio</div></div>
-        </div>
-        ${r.montables_ahora <= 0 ? '<div class="pc-stock-warn">⚠ No hay stock suficiente en sus componentes</div>' : ''}
-      </div>
-    `).join('');
   }
 
   function renderProductGrids(){
@@ -599,8 +661,13 @@
         ventaProductoId = chip.dataset.id;
         checkStock(ventaProductoId);
         const producto = PRODUCTOS.find(p => p.id === ventaProductoId);
-        if (producto && Number(producto.precio) > 0){
-          document.getElementById('ventaPrecio').value = producto.precio;
+        if (producto?.nombre === 'Redes Sociales'){
+          mostrarRedesSociales();
+        } else {
+          ocultarRedesSociales();
+          if (producto && Number(producto.precio) > 0){
+            document.getElementById('ventaPrecio').value = producto.precio;
+          }
         }
       });
     });
@@ -619,10 +686,7 @@
   function checkStock(productoId){
     const producto = PRODUCTOS.find(p => p.id === productoId);
     let sinStock = false;
-    if (producto?.tipo === 'pack'){
-      const r = PACKS.find(x => x.id === productoId);
-      sinStock = !!r && r.montables_ahora <= 0;
-    } else {
+    if (producto?.tipo === 'simple'){
       const r = STOCK.find(x => x.id === productoId);
       sinStock = !!r && r.stock_actual <= 0;
     }
@@ -775,9 +839,8 @@
     if (!SOCIO) return askName();
 
     const sinStock = lineas.filter(l => {
-      return l.tipo === 'pack'
-        ? (PACKS.find(x => x.id === l.productoId)?.montables_ahora ?? 0) <= 0
-        : (STOCK.find(x => x.id === l.productoId)?.stock_actual ?? 0) <= 0;
+      if (l.tipo !== 'simple') return false;
+      return (STOCK.find(x => x.id === l.productoId)?.stock_actual ?? 0) <= 0;
     });
     if (sinStock.length && !confirm(`Sin stock para: ${sinStock.map(l=>l.nombre).join(', ')}. ¿Registrar igualmente?`)) return;
 

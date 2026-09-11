@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Agenda Clientes — Nexus</title>
+<link rel="manifest" href="manifest-agenda.json">
+<meta name="theme-color" content="#14110D">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --ink:#14110D; --ink-soft:#1C1712; --ink-softer:#241E17;
+    --paper:#F4EFE4; --paper-dim:#C9C2B4;
+    --rust:#C6703C; --teal:#1F9E8C; --gold:#E8B93D; --bad:#D9534F; --purple:#9B7ED9;
+    --slate:#9A9184; --line:rgba(244,239,228,0.10); --radius:18px;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+    --sans:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{ background:var(--ink); color:var(--paper); font-family:var(--sans); -webkit-font-smoothing:antialiased; min-height:100vh; padding-bottom:24px; }
+  a{color:inherit;} button{font:inherit; cursor:pointer;}
+  h1,h2,h3{font-family:var(--mono); font-weight:800;}
+
+  .topbar{
+    position:sticky; top:0; z-index:20; background:rgba(20,17,13,.92); backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line); padding:16px 18px; display:flex; align-items:center; justify-content:space-between;
+  }
+  .topbar .brand{ display:flex; align-items:center; gap:9px; font-family:var(--mono); font-weight:800; font-size:16px; }
+  .topbar svg{ width:24px; height:24px; }
+
+  .viewtabs{
+    display:flex; gap:8px; max-width:1180px; margin:18px auto 0; padding:0 18px;
+  }
+  .viewtab{
+    flex:1; text-align:center; padding:12px 6px; border-radius:12px; font-weight:700; font-size:13.5px;
+    color:var(--slate); background:var(--ink-soft); border:1px solid var(--line);
+  }
+  .viewtab.active{ background:var(--rust); color:var(--paper); border-color:var(--rust); }
+
+  main{ max-width:1180px; margin:0 auto; padding:18px; }
+  .view{ display:none; } .view.active{ display:block; animation:fadein .25s ease; }
+  @keyframes fadein{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+
+  /* ---- Calendario ---- */
+  .cal-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .cal-header button{
+    width:38px; height:38px; border-radius:10px; background:var(--ink-soft); border:1px solid var(--line);
+    color:var(--paper); font-size:18px; font-weight:800;
+  }
+  .cal-label{ font-family:var(--mono); font-weight:800; font-size:16px; text-transform:capitalize; }
+  .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:8px; }
+  .cal-dow{ text-align:center; font-family:var(--mono); font-size:10px; color:var(--slate); padding-bottom:4px; text-transform:uppercase; }
+  .cal-cell{
+    aspect-ratio:1; border-radius:10px; background:var(--ink-soft); border:1px solid var(--line);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative; cursor:pointer;
+  }
+  .cal-cell:active{ transform:scale(.96); }
+  .cal-cell.empty{ background:none; border:none; cursor:default; }
+  .cal-cell.hoy{ border-color:var(--rust); }
+  .cal-cell.con-reunion{ border-color:var(--teal); background:rgba(31,158,140,0.10); }
+  .cal-num{ font-family:var(--mono); font-weight:700; font-size:13px; }
+  .cal-dot-count{
+    position:absolute; bottom:5px; font-family:var(--mono); font-size:9px; color:var(--teal);
+    background:rgba(31,158,140,.18); padding:1px 6px; border-radius:8px;
+  }
+
+  /* ---- Clientes ---- */
+  .clientes-toolbar{ display:flex; gap:10px; margin-bottom:16px; }
+  .clientes-toolbar input{
+    flex:1; background:var(--ink-soft); border:1px solid var(--line); border-radius:12px;
+    padding:13px 15px; color:var(--paper); font-size:15px;
+  }
+  .btn-nuevo{
+    padding:13px 16px; border-radius:12px; background:var(--rust); color:var(--paper);
+    font-weight:700; font-size:13.5px; border:none; white-space:nowrap;
+  }
+  .cliente-row{
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+    background:var(--ink-soft); border:1px solid var(--line); border-radius:14px;
+    padding:14px 16px; margin-bottom:10px; cursor:pointer;
+  }
+  .cliente-row:active{ border-color:var(--rust); }
+  .cliente-row.active-sel{ border-color:var(--rust); background:rgba(198,112,60,0.10); }
+  .cliente-nombre{ font-weight:700; font-size:15px; }
+  .cliente-sub{ font-size:12px; color:var(--slate); margin-top:3px; }
+  .cliente-chevron{ color:var(--slate); font-size:16px; }
+
+  .empty{ text-align:center; padding:40px 20px; color:var(--slate); font-size:14px; }
+
+  /* ---- Panel de detalle: modal en móvil, panel fijo en escritorio ---- */
+  .detail-panel-wrap{
+    display:none; position:fixed; inset:0; z-index:90; background:rgba(20,17,13,.85);
+    backdrop-filter:blur(4px); align-items:flex-end; justify-content:center;
+  }
+  .detail-panel-wrap.is-open{ display:flex; }
+  .detail-panel{
+    background:var(--ink-soft); border:1px solid var(--line); border-radius:20px 20px 0 0;
+    padding:24px; width:100%; max-width:640px; max-height:88vh; overflow-y:auto; position:relative;
+  }
+  .detail-close{
+    position:absolute; top:16px; right:16px; width:32px; height:32px; border-radius:9px;
+    background:var(--ink-softer); border:1px solid var(--line); color:var(--paper-dim); font-size:15px;
+  }
+
+  .field{ margin-bottom:16px; }
+  .field label{ display:block; font-family:var(--mono); font-size:11.5px; color:var(--slate); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; }
+  .field input, .field select, .field textarea{
+    width:100%; background:var(--ink); border:1px solid var(--line); border-radius:12px;
+    padding:13px 14px; color:var(--paper); font-family:var(--sans); font-size:15px;
+  }
+  .field textarea{ min-height:80px; resize:vertical; }
+  .field input:focus, .field select:focus, .field textarea:focus{ outline:none; border-color:var(--rust); }
+
+  .btn-submit{
+    width:100%; padding:15px; border-radius:14px; background:var(--rust); color:var(--paper);
+    font-weight:700; font-size:14.5px; border:none; margin-top:4px;
+  }
+  .btn-submit:active{ transform:scale(.98); }
+  .btn-submit.teal{ background:var(--teal); }
+  .btn-submit.ghost{ background:none; border:1px solid var(--line); color:var(--paper-dim); }
+  .btn-submit:disabled{ opacity:.4; }
+
+  .ficha-info{ margin-bottom:20px; }
+  .ficha-info .fi-row{ font-size:13.5px; color:var(--paper-dim); padding:6px 0; border-bottom:1px solid var(--line); }
+  .ficha-info .fi-row b{ color:var(--paper); font-weight:600; }
+  .ficha-notas{ font-size:13.5px; color:var(--paper-dim); background:var(--ink-softer); border-radius:12px; padding:12px 14px; margin-top:8px; line-height:1.5; }
+
+  .reunion-item{
+    background:var(--ink-softer); border-radius:14px; padding:14px 16px; margin-bottom:10px;
+  }
+  .reunion-fecha{ font-family:var(--mono); font-weight:700; font-size:13px; color:var(--teal); margin-bottom:6px; }
+  .reunion-txt{ font-size:13.5px; color:var(--paper-dim); line-height:1.5; margin-top:4px; }
+  .reunion-txt b{ color:var(--paper); font-weight:600; }
+
+  .detail-actions{ display:flex; gap:8px; margin-top:14px; margin-bottom:18px; flex-wrap:wrap; }
+  .detail-actions button{ flex:1; min-width:140px; }
+
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(20,17,13,.85); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:150; padding:24px;
+  }
+  .modal-box{ background:var(--ink-soft); border:1px solid var(--line); border-radius:20px; padding:26px; max-width:400px; width:100%; max-height:88vh; overflow-y:auto; }
+  .modal-box h3{ font-size:17px; margin-bottom:16px; }
+
+  nav.tabbar-desktop-hide{}
+
+  @media (min-width:900px){
+    main{ padding:28px; }
+    .viewtabs{ max-width:220px; flex-direction:column; margin:28px 0 0 28px; }
+
+    #view-calendario.active{ display:grid; grid-template-columns:1fr 360px; gap:24px; align-items:start; }
+    #view-clientes.active{ display:grid; grid-template-columns:360px 1fr; gap:24px; align-items:start; }
+
+    .detail-panel-wrap{ display:block !important; position:static; background:none; backdrop-filter:none; z-index:auto; }
+    .detail-panel{ border-radius:20px; max-height:none; position:sticky; top:24px; }
+    .detail-close{ display:none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 400 400"><rect width="400" height="400" rx="72" fill="#14110D"/><line x1="108" y1="108" x2="292" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><line x1="292" y1="108" x2="108" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><circle cx="108" cy="108" r="27" fill="#C6703C"/><circle cx="292" cy="108" r="27" fill="#C6703C"/><circle cx="108" cy="292" r="27" fill="#C6703C"/><circle cx="292" cy="292" r="27" fill="#C6703C"/><circle cx="200" cy="200" r="33" fill="#C6703C"/></svg>
+    Agenda Clientes
+  </div>
+</header>
+
+<div class="viewtabs">
+  <button class="viewtab active" data-view="calendario">📅 Calendario</button>
+  <button class="viewtab" data-view="clientes">👥 Clientes</button>
+</div>
+
+<main>
+
+  <section class="view active" id="view-calendario">
+    <div>
+      <div class="cal-header">
+        <button id="calPrev">‹</button>
+        <div class="cal-label" id="calLabel">—</div>
+        <button id="calNext">›</button>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+      <button class="btn-submit ghost" id="calHoyBtn" style="margin-top:14px;">Ir a hoy</button>
+    </div>
+
+    <div class="detail-panel-wrap" id="diaWrap">
+      <div class="detail-panel">
+        <button class="detail-close" id="diaClose">✕</button>
+        <h3 id="diaTitulo">Elige un día</h3>
+        <p id="diaVacio" class="empty" style="padding:20px 0;">Toca un día del calendario para ver o añadir reuniones.</p>
+        <div id="diaReuniones"></div>
+        <button class="btn-submit teal" id="diaNuevaReunionBtn" style="display:none; margin-top:10px;">+ Reunión este día</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-clientes">
+    <div>
+      <div class="clientes-toolbar">
+        <input type="text" id="clienteBusqueda" placeholder="Buscar cliente…">
+        <button class="btn-nuevo" id="nuevoClienteBtn">+ Nuevo</button>
+      </div>
+      <div id="clientesList"></div>
+    </div>
+
+    <div class="detail-panel-wrap" id="clienteWrap">
+      <div class="detail-panel">
+        <button class="detail-close" id="clienteClose">✕</button>
+        <div id="clienteDetailContent">
+          <p class="empty" style="padding:20px 0;">Elige un cliente de la lista para ver su ficha.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+  const SUPABASE_URL = 'https://wrdeltvlwvbssjituhll.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_yonWTN-t-1RL-_oa6h-0QQ_Bj4MWess';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const DIAS_SEMANA = ['L','M','X','J','V','S','D'];
+  const fechaBonita = s => s ? new Date(s+'T00:00:00').toLocaleDateString('es-ES', {day:'numeric', month:'long', year:'numeric'}) : '';
+
+  document.querySelectorAll('.viewtab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.viewtab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('view-' + tab.dataset.view).classList.add('active');
+    });
+  });
+
+  function showModal(html){
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `<div class="modal-box">${html}</div>`;
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  let CLIENTES = [];
+  let REUNIONES = [];
+
+  async function cargarTodo(){
+    const [{ data: clientes }, { data: reuniones }] = await Promise.all([
+      sb.from('clientes_crm').select('*').order('nombre'),
+      sb.from('reuniones').select('*, clientes_crm(nombre)').order('fecha', { ascending: false }),
+    ]);
+    CLIENTES = clientes || [];
+    REUNIONES = reuniones || [];
+    renderCalendar();
+    renderClientesList();
+    if (clienteAbiertoId) abrirClienteDetail(clienteAbiertoId, false);
+    if (diaAbierto) abrirDia(diaAbierto, false);
+  }
+
+  // =====================================================================
+  // CALENDARIO
+  // =====================================================================
+  let calYear, calMonth;
+  let diaAbierto = null;
+
+  function initCalendar(){
+    const now = new Date();
+    calYear = now.getFullYear(); calMonth = now.getMonth();
+  }
+
+  function renderCalendar(){
+    document.getElementById('calLabel').textContent = `${MESES[calMonth]} ${calYear}`;
+    const primerDia = new Date(calYear, calMonth, 1);
+    const diasEnMes = new Date(calYear, calMonth + 1, 0).getDate();
+    const offset = (primerDia.getDay() + 6) % 7; // lunes=0
+
+    const porDia = new Map();
+    REUNIONES.forEach(r => {
+      if (!porDia.has(r.fecha)) porDia.set(r.fecha, []);
+      porDia.get(r.fecha).push(r);
+    });
+
+    const hoyStr = new Date().toISOString().slice(0, 10);
+    let html = DIAS_SEMANA.map(d => `<div class="cal-dow">${d}</div>`).join('');
+    for (let i = 0; i < offset; i++) html += `<div class="cal-cell empty"></div>`;
+    for (let d = 1; d <= diasEnMes; d++){
+      const fechaStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const reus = porDia.get(fechaStr) || [];
+      html += `<div class="cal-cell ${fechaStr === hoyStr ? 'hoy' : ''} ${reus.length ? 'con-reunion' : ''}" data-fecha="${fechaStr}">
+        <div class="cal-num">${d}</div>
+        ${reus.length ? `<div class="cal-dot-count">${reus.length}</div>` : ''}
+      </div>`;
+    }
+    document.getElementById('calGrid').innerHTML = html;
+    document.querySelectorAll('.cal-cell[data-fecha]').forEach(cell => {
+      cell.addEventListener('click', () => abrirDia(cell.dataset.fecha));
+    });
+  }
+
+  document.getElementById('calPrev').addEventListener('click', () => {
+    calMonth--; if (calMonth < 0){ calMonth = 11; calYear--; }
+    renderCalendar();
+  });
+  document.getElementById('calNext').addEventListener('click', () => {
+    calMonth++; if (calMonth > 11){ calMonth = 0; calYear++; }
+    renderCalendar();
+  });
+  document.getElementById('calHoyBtn').addEventListener('click', () => { initCalendar(); renderCalendar(); });
+
+  function abrirDia(fechaStr, abrirPanel = true){
+    diaAbierto = fechaStr;
+    const reus = REUNIONES.filter(r => r.fecha === fechaStr);
+    document.getElementById('diaTitulo').textContent = fechaBonita(fechaStr);
+    document.getElementById('diaVacio').style.display = reus.length ? 'none' : 'block';
+    document.getElementById('diaNuevaReunionBtn').style.display = 'block';
+    document.getElementById('diaReuniones').innerHTML = reus.map(r => `
+      <div class="reunion-item">
+        <div class="reunion-fecha">${r.hora ? r.hora.slice(0,5) + ' · ' : ''}${r.clientes_crm?.nombre || '—'}</div>
+        ${r.resumen ? `<div class="reunion-txt"><b>Resumen:</b> ${r.resumen}</div>` : ''}
+        ${r.acordado ? `<div class="reunion-txt"><b>Acordado:</b> ${r.acordado}</div>` : ''}
+      </div>
+    `).join('');
+    if (abrirPanel) document.getElementById('diaWrap').classList.add('is-open');
+  }
+  document.getElementById('diaClose').addEventListener('click', () => {
+    document.getElementById('diaWrap').classList.remove('is-open');
+  });
+  document.getElementById('diaNuevaReunionBtn').addEventListener('click', () => abrirFormReunion(null, diaAbierto));
+
+  // =====================================================================
+  // CLIENTES — lista, búsqueda, detalle
+  // =====================================================================
+  let clienteAbiertoId = null;
+
+  function renderClientesList(){
+    const q = (document.getElementById('clienteBusqueda').value || '').trim().toLowerCase();
+    const lista = CLIENTES.filter(c => !q || c.nombre.toLowerCase().includes(q));
+    const el = document.getElementById('clientesList');
+    if (!lista.length){
+      el.innerHTML = `<div class="empty">${CLIENTES.length ? 'Ningún cliente coincide con la búsqueda.' : 'Todavía no hay clientes — añade el primero.'}</div>`;
+      return;
+    }
+    el.innerHTML = lista.map(c => {
+      const ultimaReunion = REUNIONES.find(r => r.cliente_id === c.id);
+      return `
+      <div class="cliente-row ${c.id === clienteAbiertoId ? 'active-sel' : ''}" data-id="${c.id}">
+        <div>
+          <div class="cliente-nombre">${c.nombre}</div>
+          <div class="cliente-sub">${ultimaReunion ? 'Última reunión: ' + fechaBonita(ultimaReunion.fecha) : (c.telefono || c.email || 'Sin reuniones todavía')}</div>
+        </div>
+        <div class="cliente-chevron">›</div>
+      </div>`;
+    }).join('');
+    el.querySelectorAll('.cliente-row').forEach(row => {
+      row.addEventListener('click', () => abrirClienteDetail(row.dataset.id));
+    });
+  }
+  document.getElementById('clienteBusqueda').addEventListener('input', renderClientesList);
+
+  function abrirClienteDetail(clienteId, abrirPanel = true){
+    clienteAbiertoId = clienteId;
+    const cliente = CLIENTES.find(c => c.id === clienteId);
+    if (!cliente) return;
+    const reus = REUNIONES.filter(r => r.cliente_id === clienteId);
+
+    document.getElementById('clienteDetailContent').innerHTML = `
+      <h3 style="font-size:18px; margin-bottom:14px; padding-right:30px;">${cliente.nombre}</h3>
+      <div class="ficha-info">
+        ${cliente.contacto ? `<div class="fi-row"><b>Contacto:</b> ${cliente.contacto}</div>` : ''}
+        ${cliente.telefono ? `<div class="fi-row"><b>Teléfono:</b> ${cliente.telefono}</div>` : ''}
+        ${cliente.email ? `<div class="fi-row"><b>Email:</b> ${cliente.email}</div>` : ''}
+        ${cliente.notas ? `<div class="ficha-notas">${cliente.notas}</div>` : ''}
+      </div>
+      <div class="detail-actions">
+        <button class="btn-submit teal" id="btnNuevaReunionCliente">+ Reunión</button>
+        <button class="btn-submit ghost" id="btnEditarCliente">Editar</button>
+        <button class="btn-submit ghost" id="btnFichaPDF">📄 Generar ficha (PDF)</button>
+      </div>
+      <div class="sec-title" style="font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin:20px 0 10px;">Historial de reuniones</div>
+      <div id="clienteReunionesList">
+        ${!reus.length ? '<div class="empty">Sin reuniones registradas todavía.</div>' : reus.map(r => `
+          <div class="reunion-item">
+            <div class="reunion-fecha">${fechaBonita(r.fecha)}${r.hora ? ' · ' + r.hora.slice(0,5) : ''}</div>
+            ${r.resumen ? `<div class="reunion-txt"><b>Resumen:</b> ${r.resumen}</div>` : ''}
+            ${r.acordado ? `<div class="reunion-txt"><b>Acordado:</b> ${r.acordado}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+    document.getElementById('btnNuevaReunionCliente').addEventListener('click', () => abrirFormReunion(clienteId, null));
+    document.getElementById('btnEditarCliente').addEventListener('click', () => abrirFormCliente(cliente));
+    document.getElementById('btnFichaPDF').addEventListener('click', () => generarFichaPDF(cliente, reus));
+
+    if (abrirPanel) document.getElementById('clienteWrap').classList.add('is-open');
+    renderClientesList();
+  }
+  document.getElementById('clienteClose').addEventListener('click', () => {
+    document.getElementById('clienteWrap').classList.remove('is-open');
+  });
+
+  document.getElementById('nuevoClienteBtn').addEventListener('click', () => abrirFormCliente(null));
+
+  function abrirFormCliente(cliente){
+    const esNuevo = !cliente;
+    const overlay = showModal(`
+      <h3>${esNuevo ? 'Nuevo cliente' : 'Editar cliente'}</h3>
+      <div class="field"><label>Nombre</label><input id="fNombre" value="${cliente?.nombre || ''}" placeholder="Nombre del negocio o persona"></div>
+      <div class="field"><label>Persona de contacto (opcional)</label><input id="fContacto" value="${cliente?.contacto || ''}" placeholder="Ej: María, encargada"></div>
+      <div class="field"><label>Teléfono (opcional)</label><input id="fTelefono" value="${cliente?.telefono || ''}" placeholder="600 000 000"></div>
+      <div class="field"><label>Email (opcional)</label><input id="fEmail" type="email" value="${cliente?.email || ''}" placeholder="correo@ejemplo.com"></div>
+      <div class="field"><label>Notas generales (opcional)</label><textarea id="fNotas" placeholder="Cualquier cosa útil sobre este cliente">${cliente?.notas || ''}</textarea></div>
+      <button class="btn-submit" id="fGuardar">Guardar</button>
+      <button class="btn-submit ghost" id="fCancelar" style="margin-top:8px;">Cancelar</button>
+    `);
+    document.getElementById('fCancelar').addEventListener('click', () => overlay.remove());
+    document.getElementById('fGuardar').addEventListener('click', async () => {
+      const nombre = document.getElementById('fNombre').value.trim();
+      if (!nombre) return alert('Ponle un nombre al cliente');
+      const payload = {
+        nombre,
+        contacto: document.getElementById('fContacto').value.trim() || null,
+        telefono: document.getElementById('fTelefono').value.trim() || null,
+        email: document.getElementById('fEmail').value.trim() || null,
+        notas: document.getElementById('fNotas').value.trim() || null,
+      };
+      const btn = document.getElementById('fGuardar');
+      btn.disabled = true; btn.textContent = 'Guardando…';
+      const { data, error } = esNuevo
+        ? await sb.from('clientes_crm').insert(payload).select('id').single()
+        : await sb.from('clientes_crm').update(payload).eq('id', cliente.id).select('id').single();
+      btn.disabled = false; btn.textContent = 'Guardar';
+      if (error){ alert('Error: ' + error.message); return; }
+      overlay.remove();
+      clienteAbiertoId = data.id;
+      await cargarTodo();
+      abrirClienteDetail(data.id);
+    });
+  }
+
+  // =====================================================================
+  // REUNIONES — formulario (desde el calendario o desde la ficha de cliente)
+  // =====================================================================
+  function abrirFormReunion(clienteIdPre, fechaPre){
+    if (!CLIENTES.length){
+      alert('Añade primero un cliente en la pestaña Clientes.');
+      return;
+    }
+    const clientesOpts = CLIENTES.map(c => `<option value="${c.id}" ${c.id === clienteIdPre ? 'selected' : ''}>${c.nombre}</option>`).join('');
+    const overlay = showModal(`
+      <h3>Nueva reunión</h3>
+      <div class="field"><label>Cliente</label><select id="rCliente">${clientesOpts}</select></div>
+      <div class="field"><label>Fecha</label><input type="date" id="rFecha" value="${fechaPre || new Date().toISOString().slice(0,10)}"></div>
+      <div class="field"><label>Hora (opcional)</label><input type="time" id="rHora"></div>
+      <div class="field"><label>Resumen de la reunión</label><textarea id="rResumen" placeholder="De qué habéis hablado"></textarea></div>
+      <div class="field"><label>Qué se acordó</label><textarea id="rAcordado" placeholder="Compromisos, próximos pasos…"></textarea></div>
+      <button class="btn-submit teal" id="rGuardar">Guardar reunión</button>
+      <button class="btn-submit ghost" id="rCancelar" style="margin-top:8px;">Cancelar</button>
+    `);
+    document.getElementById('rCancelar').addEventListener('click', () => overlay.remove());
+    document.getElementById('rGuardar').addEventListener('click', async () => {
+      const cliente_id = document.getElementById('rCliente').value;
+      const fecha = document.getElementById('rFecha').value;
+      const hora = document.getElementById('rHora').value || null;
+      const resumen = document.getElementById('rResumen').value.trim() || null;
+      const acordado = document.getElementById('rAcordado').value.trim() || null;
+      if (!cliente_id) return alert('Elige un cliente');
+      if (!fecha) return alert('Pon la fecha de la reunión');
+
+      const btn = document.getElementById('rGuardar');
+      btn.disabled = true; btn.textContent = 'Guardando…';
+      const { error } = await sb.from('reuniones').insert({ cliente_id, fecha, hora, resumen, acordado });
+      btn.disabled = false; btn.textContent = 'Guardar reunión';
+      if (error){ alert('Error: ' + error.message); return; }
+      overlay.remove();
+      await cargarTodo();
+    });
+  }
+
+  // =====================================================================
+  // FICHA DE CLIENTE EN PDF — todo en el navegador, sin backend (jsPDF)
+  // =====================================================================
+  function generarFichaPDF(cliente, reunionesCliente){
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const margin = 18;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const maxWidth = pageWidth - margin * 2;
+    let y = margin;
+
+    function addLine(text, { size = 11, bold = false, gap = 6 } = {}){
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.setFontSize(size);
+      const lines = doc.splitTextToSize(String(text), maxWidth);
+      lines.forEach(line => {
+        if (y > pageHeight - margin){ doc.addPage(); y = margin; }
+        doc.text(line, margin, y);
+        y += size * 0.52;
+      });
+      y += gap;
+    }
+
+    addLine(`Ficha de cliente — ${cliente.nombre}`, { size: 18, bold: true, gap: 2 });
+    addLine(`Generada el ${new Date().toLocaleDateString('es-ES')}`, { size: 9, gap: 10 });
+
+    if (cliente.contacto) addLine(`Contacto: ${cliente.contacto}`, { gap: 3 });
+    if (cliente.telefono) addLine(`Teléfono: ${cliente.telefono}`, { gap: 3 });
+    if (cliente.email) addLine(`Email: ${cliente.email}`, { gap: 3 });
+    if (cliente.notas){
+      y += 3;
+      addLine('Notas generales', { size: 12, bold: true, gap: 3 });
+      addLine(cliente.notas, { gap: 8 });
+    }
+
+    y += 4;
+    addLine('Historial de reuniones', { size: 14, bold: true, gap: 6 });
+
+    const ordenadas = [...reunionesCliente].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+    if (!ordenadas.length){
+      addLine('Sin reuniones registradas todavía.');
+    } else {
+      ordenadas.forEach(r => {
+        addLine(`${fechaBonita(r.fecha)}${r.hora ? ' · ' + r.hora.slice(0,5) : ''}`, { size: 12, bold: true, gap: 2 });
+        if (r.resumen) addLine(`Resumen: ${r.resumen}`, { gap: 2 });
+        if (r.acordado) addLine(`Acordado: ${r.acordado}`, { gap: 2 });
+        y += 5;
+      });
+    }
+
+    doc.save(`ficha-${cliente.nombre.replace(/\s+/g, '-').toLowerCase()}.pdf`);
+  }
+
+  // =====================================================================
+  // TIEMPO REAL — igual que el resto de apps de Nexus, se actualiza solo
+  // =====================================================================
+  sb.channel('agenda-cambios')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes_crm' }, cargarTodo)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'reuniones' }, cargarTodo)
+    .subscribe();
+
+  initCalendar();
+  cargarTodo();
+
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
