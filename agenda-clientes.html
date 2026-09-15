@@ -95,6 +95,25 @@
 
   .empty{ text-align:center; padding:40px 20px; color:var(--slate); font-size:14px; }
 
+  /* ---- Tareas ---- */
+  .tareas-form{ background:var(--ink-soft); border:1px solid var(--line); border-radius:16px; padding:16px 16px 6px; margin-bottom:22px; }
+  .tarea-grupo-title{ font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin:22px 0 10px; }
+  .tarea-grupo-title:first-of-type{ margin-top:0; }
+  .tarea-row{
+    display:flex; justify-content:space-between; align-items:center; gap:12px;
+    background:var(--ink-soft); border:1px solid var(--line); border-radius:14px;
+    padding:14px 16px; margin-bottom:10px;
+  }
+  .tarea-row.hecha{ opacity:.5; }
+  .tarea-desc{ font-size:14.5px; font-weight:600; }
+  .tarea-row.hecha .tarea-desc{ text-decoration:line-through; }
+  .tarea-meta{ font-size:11.5px; color:var(--slate); margin-top:3px; }
+  .tarea-right{ display:flex; align-items:center; gap:14px; flex-shrink:0; }
+  .tarea-del{ width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--slate); background:none; border:none; }
+  .tarea-del:active{ background:rgba(217,83,79,0.15); color:var(--bad); }
+  .tarea-del svg{ width:14px; height:14px; }
+  .tarea-check{ width:22px; height:22px; accent-color:var(--teal); cursor:pointer; }
+
   /* ---- Panel de detalle: modal en móvil, panel fijo en escritorio ---- */
   .detail-panel-wrap{
     display:none; position:fixed; inset:0; z-index:90; background:rgba(20,17,13,.85);
@@ -199,6 +218,7 @@
 <div class="viewtabs">
   <button class="viewtab active" data-view="calendario">📅 Calendario</button>
   <button class="viewtab" data-view="clientes">👥 Clientes</button>
+  <button class="viewtab" data-view="tareas">✅ Tareas</button>
 </div>
 
 <main>
@@ -242,6 +262,15 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <section class="view" id="view-tareas">
+    <div class="tareas-form">
+      <div class="field"><label>Tarea</label><input type="text" id="tareaDesc" placeholder="Qué hay que hacer"></div>
+      <div class="field"><label>Para quién</label><input type="text" id="tareaAsignado" list="sociosDatalist" placeholder="Nombre de la persona" autocomplete="off"><datalist id="sociosDatalist"></datalist></div>
+      <button class="btn-submit teal" id="tareaSubmit" style="margin-bottom:16px;">+ Añadir tarea</button>
+    </div>
+    <div id="tareasList"></div>
   </section>
 
 </main>
@@ -288,6 +317,7 @@
   }
   if (!SOCIO) askName(); else document.getElementById('whoamiName').textContent = SOCIO;
   document.getElementById('whoamiBtn').onclick = askName;
+  document.getElementById('tareaAsignado').value = SOCIO || '';
 
   document.querySelectorAll('.viewtab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -311,23 +341,103 @@
   let REUNIONES = [];
   let PRODUCTOS = [];
   let TARIFAS_REDES = [];
+  let TAREAS = [];
 
   async function cargarTodo(){
-    const [{ data: clientes }, { data: reuniones }, { data: productos }, { data: tarifas }] = await Promise.all([
+    const [{ data: clientes }, { data: reuniones }, { data: productos }, { data: tarifas }, { data: tareas }] = await Promise.all([
       sb.from('clientes_crm').select('*').order('nombre'),
       sb.from('reuniones').select('*, clientes_crm(nombre)').order('fecha', { ascending: false }),
       sb.from('productos').select('*').eq('activo', true).order('nombre'),
       sb.from('tarifas_redes_sociales').select('*').order('videos'),
+      sb.from('tareas').select('*').order('hecha', { ascending: true }).order('created_at', { ascending: false }),
     ]);
     CLIENTES = clientes || [];
     REUNIONES = reuniones || [];
     PRODUCTOS = productos || [];
     TARIFAS_REDES = tarifas || [];
+    TAREAS = tareas || [];
     renderCalendar();
     renderClientesList();
+    renderTareas();
     if (clienteAbiertoId) abrirClienteDetail(clienteAbiertoId, false);
     if (diaAbierto) abrirDia(diaAbierto, false);
   }
+
+  // =====================================================================
+  // TAREAS — control de pendientes por persona, aparte del calendario.
+  // =====================================================================
+  function renderTareas(){
+    const list = document.getElementById('tareasList');
+    if (!TAREAS.length){
+      list.innerHTML = '<div class="empty">Sin tareas pendientes — añade la primera arriba.</div>';
+    } else {
+      const grupos = new Map();
+      TAREAS.forEach(t => {
+        if (!grupos.has(t.asignado_a)) grupos.set(t.asignado_a, []);
+        grupos.get(t.asignado_a).push(t);
+      });
+
+      let html = '';
+      grupos.forEach((tareas, persona) => {
+        const pendientes = tareas.filter(t => !t.hecha).length;
+        html += `<div class="tarea-grupo-title">${persona} · ${pendientes} pendiente${pendientes === 1 ? '' : 's'}</div>`;
+        html += tareas.map(t => `
+          <div class="tarea-row ${t.hecha ? 'hecha' : ''}">
+            <div>
+              <div class="tarea-desc">${t.descripcion}</div>
+              ${t.creado_por ? `<div class="tarea-meta">Añadida por ${t.creado_por}</div>` : ''}
+            </div>
+            <div class="tarea-right">
+              <button class="tarea-del" data-id="${t.id}" aria-label="Borrar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>
+              </button>
+              <input type="checkbox" class="tarea-check" data-id="${t.id}" ${t.hecha ? 'checked' : ''}>
+            </div>
+          </div>`).join('');
+      });
+      list.innerHTML = html;
+    }
+
+    list.querySelectorAll('.tarea-check').forEach(cb => {
+      cb.addEventListener('change', async () => {
+        const hecha = cb.checked;
+        const { error } = await sb.from('tareas')
+          .update({ hecha, fecha_hecha: hecha ? new Date().toISOString() : null })
+          .eq('id', cb.dataset.id);
+        if (error){ alert('Error: ' + error.message); cb.checked = !hecha; return; }
+        cargarTodo();
+      });
+    });
+    list.querySelectorAll('.tarea-del').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('¿Borrar esta tarea?')) return;
+        const { error } = await sb.from('tareas').delete().eq('id', btn.dataset.id);
+        if (error){ alert('Error: ' + error.message); return; }
+        cargarTodo();
+      });
+    });
+
+    const personas = [...new Set(TAREAS.map(t => t.asignado_a))];
+    document.getElementById('sociosDatalist').innerHTML = personas.map(p => `<option value="${p}">`).join('');
+  }
+
+  document.getElementById('tareaSubmit').addEventListener('click', async () => {
+    const descripcion = document.getElementById('tareaDesc').value.trim();
+    const asignado = document.getElementById('tareaAsignado').value.trim();
+    if (!descripcion) return alert('Escribe qué hay que hacer');
+    if (!asignado) return alert('Di para quién es la tarea');
+    if (!SOCIO) return askName();
+
+    const btn = document.getElementById('tareaSubmit');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    const { error } = await sb.from('tareas').insert({ descripcion, asignado_a: asignado, creado_por: SOCIO });
+    btn.disabled = false; btn.textContent = '+ Añadir tarea';
+    if (error){ alert('Error al guardar: ' + error.message); return; }
+
+    document.getElementById('tareaDesc').value = '';
+    document.getElementById('tareaAsignado').value = SOCIO || '';
+    cargarTodo();
+  });
 
   // =====================================================================
   // CALENDARIO
@@ -912,7 +1022,12 @@
   sb.channel('agenda-cambios')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes_crm' }, cargarTodo)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'reuniones' }, cargarTodo)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'tareas' }, cargarTodo)
     .subscribe();
+
+  // Red de seguridad — igual que Control NFC, refresca cada 3s por si el
+  // aviso en directo se pierde (wifi, pestaña dormida...).
+  setInterval(cargarTodo, 3000);
 
   initCalendar();
   cargarTodo();
