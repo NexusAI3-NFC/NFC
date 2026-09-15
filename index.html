@@ -62,15 +62,11 @@
 
   .cobro-badge{
     display:inline-block; font-family:var(--mono); font-size:10px; padding:4px 9px; border-radius:20px; font-weight:700;
-    white-space:nowrap; border:none; margin-bottom:12px;
+    white-space:nowrap; border:none;
   }
   .cobro-badge.pendiente{ background:rgba(232,185,61,0.18); color:var(--gold); }
   .cobro-badge.cobrado{ background:rgba(31,158,140,0.15); color:var(--teal); }
-  .btn-marcar-cobrado{
-    width:100%; margin-top:10px; padding:11px; border-radius:10px; border:1px solid var(--gold);
-    background:none; color:var(--gold); font-weight:700; font-size:13px;
-  }
-  .btn-marcar-cobrado:active{ background:rgba(232,185,61,0.15); }
+  .pedido-card .cobro-badge{ display:block; width:fit-content; margin-bottom:12px; }
 
   .sec-title{ font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin:24px 0 10px; }
 
@@ -288,8 +284,8 @@
 
     <div class="sec-title">Cobros</div>
     <div class="stats-row">
-      <div class="stat-box pendiente-cobro"><div class="v" id="totPendienteCobro">—</div><div class="l">Nos deben (pendiente)</div></div>
-      <div class="stat-box cobrado-mano"><div class="v" id="totCobradoMano">—</div><div class="l">En mano (cobrado)</div></div>
+      <div class="stat-box pendiente-cobro"><div class="v" id="totPendienteCobro">—</div><div class="l">Nos deben (sin entregar)</div></div>
+      <div class="stat-box cobrado-mano"><div class="v" id="totCobradoMano">—</div><div class="l">En mano (ya entregado)</div></div>
     </div>
 
     <div class="sec-title">Stock real (lo que compráis)</div>
@@ -331,13 +327,6 @@
     <div id="entregaFechas" style="display:none;">
       <div class="field"><label>Fecha acordada</label><input type="date" id="fechaDesde"></div>
       <div class="field"><label>Hasta (opcional, si es un rango)</label><input type="date" id="fechaHasta"></div>
-    </div>
-
-    <div class="field"><label>Cobro</label>
-      <div class="chip-grid" id="cobroGrid">
-        <div class="chip active" data-val="cobrado">Ya cobrado</div>
-        <div class="chip" data-val="pendiente">Pendiente de cobro</div>
-      </div>
     </div>
 
     <button class="btn-submit teal" id="ventaSubmit">Registrar venta</button>
@@ -497,7 +486,6 @@
   const entregaSel = wireChipSelect('entregaGrid', val => {
     document.getElementById('entregaFechas').style.display = (val === 'pendiente') ? 'block' : 'none';
   });
-  const cobroSel = wireChipSelect('cobroGrid');
 
   // ---- líneas del pedido actual (varios productos, mismo cliente) ----
   let lineasVenta = [];
@@ -630,10 +618,6 @@
   let COBROS = [];
   const money = n => (Number(n)||0).toLocaleString('es-ES', {style:'currency', currency:'EUR'});
   const fechaBonita = s => s ? new Date(s+'T00:00:00').toLocaleDateString('es-ES', {day:'numeric', month:'short'}) : '';
-  const hoyLocalISO = () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  };
 
   let ventaProductoId = null;
   let gastoProductoId = null;
@@ -646,7 +630,7 @@
       sb.from('pedidos_pendientes').select('*').order('fecha_limite', {ascending:true, nullsFirst:false}),
       sb.from('tarifas_redes_sociales').select('*').order('videos'),
       sb.from('clientes_crm').select('*').order('nombre'),
-      sb.from('ventas').select('precio_venta, cobrado, pedido_id'),
+      sb.from('ventas').select('precio_venta, entregado'),
     ]);
     PRODUCTOS = productos || [];
     STOCK = stock || [];
@@ -697,8 +681,8 @@
       document.getElementById('totAhorro').textContent = money(GLOBAL.ahorro_acumulado);
     }
 
-    const pendienteCobro = COBROS.filter(v => !v.cobrado).reduce((s, v) => s + Number(v.precio_venta || 0), 0);
-    const cobradoMano = COBROS.filter(v => v.cobrado).reduce((s, v) => s + Number(v.precio_venta || 0), 0);
+    const pendienteCobro = COBROS.filter(v => !v.entregado).reduce((s, v) => s + Number(v.precio_venta || 0), 0);
+    const cobradoMano = COBROS.filter(v => v.entregado).reduce((s, v) => s + Number(v.precio_venta || 0), 0);
     document.getElementById('totPendienteCobro').textContent = money(pendienteCobro);
     document.getElementById('totCobradoMano').textContent = money(cobradoMano);
 
@@ -769,15 +753,6 @@
     return `${base}seguimiento-cliente.html?cliente=${encodeURIComponent(clienteNombre)}`;
   }
 
-  // Estado de cobro de un pedido a partir de COBROS (ventas.cobrado),
-  // en vez de la vista pedidos_pendientes, para no depender de que esa
-  // vista tenga la columna nueva.
-  function cobroInfoPedido(pedidoId){
-    const filas = COBROS.filter(v => v.pedido_id === pedidoId);
-    const pendiente = filas.filter(f => !f.cobrado).reduce((s,f) => s + Number(f.precio_venta || 0), 0);
-    return { cobrado: filas.length > 0 && pendiente <= 0, pendiente };
-  }
-
   function renderPendientes(){
     const list = document.getElementById('pendientesList');
     const grupos = new Map();
@@ -801,7 +776,6 @@
       const atrasado = lineas.some(l => l.atrasado);
       const total = lineas.reduce((s,l) => s + Number(l.precio_venta || 0), 0);
       const estadoIdx = Math.max(0, ESTADOS.indexOf(first.estado));
-      const cobro = cobroInfoPedido(first.pedido_id);
 
       const stepperHtml = ESTADOS.map((e,i) => `
         <div class="step ${i <= estadoIdx ? 'done' : ''}">
@@ -823,7 +797,7 @@
           <div class="pedido-producto">${lineas.length} producto${lineas.length>1?'s':''} · ${money(total)} · ${first.socio}</div></div>
           <span class="pedido-badge ${atrasado ? 'atrasado' : 'ok'}">${atrasado ? '⚠ Atrasado' : 'En plazo'}</span>
         </div>
-        <span class="cobro-badge ${cobro.cobrado ? 'cobrado' : 'pendiente'}">${cobro.cobrado ? '💶 Cobrado' : `💶 Nos deben ${money(cobro.pendiente)}`}</span>
+        <span class="cobro-badge pendiente">💶 Nos deben ${money(total)} (hasta que se entregue)</span>
         ${lineas.some(l => l.origen === 'cliente') ? '<div class="origen-tag">💬 Pedido por el cliente desde el seguimiento</div>' : ''}
         <div class="pedido-lineas">${lineasHtml}</div>
         ${rango
@@ -843,25 +817,12 @@
           ? `<button class="btn-avanzar" data-pedido="${first.pedido_id}" data-next="${ESTADOS[estadoIdx+1]}">Avanzar a «${ESTADO_LABELS[ESTADOS[estadoIdx+1]]}»</button>`
           : ''}
 
-        ${cobro.cobrado ? '' : `<button class="btn-marcar-cobrado" data-pedido="${first.pedido_id}">💶 Marcar como cobrado</button>`}
-
         <div class="pedido-actions">
           <button class="btn-link" data-link="${linkSeguimiento(first.cliente)}">🔗 Copiar seguimiento</button>
           <button class="btn-entregado" data-pedido="${first.pedido_id}">✓ Entregado</button>
         </div>
       </div>`;
     }).join('');
-
-    list.querySelectorAll('.btn-marcar-cobrado').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        btn.disabled = true; btn.textContent = 'Guardando…';
-        const { error } = await sb.from('ventas')
-          .update({ cobrado: true, fecha_cobro: hoyLocalISO() })
-          .eq('pedido_id', btn.dataset.pedido);
-        if (error){ alert('Error: ' + error.message); btn.disabled = false; return; }
-        cargarTodo();
-      });
-    });
 
     list.querySelectorAll('.btn-avanzar').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -940,7 +901,6 @@
     btn.disabled = true; btn.textContent = 'Guardando…';
     const clienteId = await resolverClienteId(cliente);
     const pedidoId = crypto.randomUUID();
-    const cobrado = cobroSel() !== 'pendiente';
     const filas = lineas.map(l => ({
       producto_id: l.productoId, cliente, cliente_id: clienteId, precio_venta: l.precio, notas, socio: SOCIO,
       entregado: entrega !== 'pendiente',
@@ -948,8 +908,6 @@
       pedido_id: pedidoId,
       fecha_entrega_desde: entrega === 'pendiente' ? fechaDesde : null,
       fecha_entrega_hasta: entrega === 'pendiente' ? fechaHasta : null,
-      cobrado,
-      fecha_cobro: cobrado ? hoyLocalISO() : null,
     }));
     const { error } = await sb.from('ventas').insert(filas);
     btn.disabled = false; btn.textContent = 'Registrar venta';
@@ -965,8 +923,6 @@
     document.querySelectorAll('#entregaGrid .chip').forEach(c => c.classList.remove('active'));
     document.querySelector('#entregaGrid .chip[data-val="inmediata"]').classList.add('active');
     document.getElementById('entregaFechas').style.display = 'none';
-    document.querySelectorAll('#cobroGrid .chip').forEach(c => c.classList.remove('active'));
-    document.querySelector('#cobroGrid .chip[data-val="cobrado"]').classList.add('active');
     document.querySelector('.tab[data-view="inicio"]').click();
   });
 
@@ -1049,7 +1005,7 @@
       sb.from('ahorros').select('*').order('created_at', {ascending:false}).limit(20),
     ]);
     const items = [
-      ...(ventas||[]).map(v => ({ id:v.id, type:'venta', dir:'in', nombre:v.productos?.nombre, sub:`${v.cliente} · ${v.socio}`, amt:v.precio_venta, fecha:v.fecha, created_at:v.created_at, cobrado:v.cobrado })),
+      ...(ventas||[]).map(v => ({ id:v.id, type:'venta', dir:'in', nombre:v.productos?.nombre, sub:`${v.cliente} · ${v.socio}`, amt:v.precio_venta, fecha:v.fecha, created_at:v.created_at, cobrado:v.entregado })),
       ...(compras||[]).map(c => ({ id:c.id, type:'compra', dir:'out', nombre:c.productos?.nombre, sub:`${c.proveedor} · ${c.cantidad}u · ${c.socio}`, amt:c.coste_total, fecha:c.fecha, created_at:c.created_at })),
       ...(generales||[]).map(g => ({ id:g.id, type:'gasto', dir:'out', nombre:g.concepto, sub:`${g.categoria} · ${g.socio}`, amt:g.importe, fecha:g.fecha, created_at:g.created_at })),
       ...(ahorros||[]).map(a => ({ id:a.id, type:'ahorro', dir: a.tipo==='aportar'?'in':'out', nombre: a.tipo==='aportar'?'Aporte a la hucha':'Retiro de la hucha', sub:`${a.notas||''} · ${a.socio}`, amt:a.importe, fecha:a.fecha, created_at:a.created_at })),
@@ -1065,7 +1021,7 @@
         </div>
         <div style="display:flex; align-items:center; gap:10px;">
           ${it.type === 'venta'
-            ? `<button class="cobro-badge ${it.cobrado ? 'cobrado' : 'pendiente'} hist-cobro-toggle" data-id="${it.id}" data-cobrado="${it.cobrado}">${it.cobrado ? '💶 Cobrado' : '💶 Pendiente'}</button>`
+            ? `<span class="cobro-badge ${it.cobrado ? 'cobrado' : 'pendiente'}">${it.cobrado ? '💶 Cobrado' : '💶 Pendiente'}</span>`
             : ''}
           <div class="hist-amt ${it.dir}">${it.dir==='in'?'+':'-'}${money(it.amt)}</div>
           <button class="hist-del" data-type="${it.type}" data-id="${it.id}" aria-label="Borrar">
@@ -1077,18 +1033,6 @@
 
     list.querySelectorAll('.hist-del').forEach(btn => {
       btn.addEventListener('click', () => borrarMovimiento(btn.dataset.type, btn.dataset.id));
-    });
-    list.querySelectorAll('.hist-cobro-toggle').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const nuevoCobrado = btn.dataset.cobrado !== 'true';
-        btn.disabled = true;
-        const { error } = await sb.from('ventas')
-          .update({ cobrado: nuevoCobrado, fecha_cobro: nuevoCobrado ? hoyLocalISO() : null })
-          .eq('id', btn.dataset.id);
-        btn.disabled = false;
-        if (error){ alert('Error: ' + error.message); return; }
-        cargarTodo();
-      });
     });
   }
 
