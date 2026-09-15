@@ -105,9 +105,19 @@
     padding:14px 16px; margin-bottom:10px;
   }
   .tarea-row.hecha{ opacity:.5; }
+  .tarea-row.atrasada{ border-color:var(--bad); background:linear-gradient(135deg, rgba(217,83,79,0.10), var(--ink-soft)); }
   .tarea-desc{ font-size:14.5px; font-weight:600; }
   .tarea-row.hecha .tarea-desc{ text-decoration:line-through; }
-  .tarea-meta{ font-size:11.5px; color:var(--slate); margin-top:3px; }
+  .tarea-meta{ font-size:11.5px; color:var(--slate); margin-top:3px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .tarea-meta .fecha-limite.atrasada{ color:var(--bad); font-weight:700; }
+  .tarea-estado{
+    font-family:var(--mono); font-size:10px; font-weight:700; border-radius:20px; border:none;
+    padding:4px 18px 4px 9px; cursor:pointer; appearance:none; -webkit-appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239A9184' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 4px center; background-size:11px;
+  }
+  .tarea-estado.pendiente{ background:rgba(232,185,61,0.18); color:var(--gold); }
+  .tarea-estado.en_progreso{ background:rgba(155,126,217,0.18); color:var(--purple); }
   .tarea-right{ display:flex; align-items:center; gap:14px; flex-shrink:0; }
   .tarea-del{ width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--slate); background:none; border:none; }
   .tarea-del:active{ background:rgba(217,83,79,0.15); color:var(--bad); }
@@ -267,7 +277,16 @@
   <section class="view" id="view-tareas">
     <div class="tareas-form">
       <div class="field"><label>Tarea</label><input type="text" id="tareaDesc" placeholder="Qué hay que hacer"></div>
-      <div class="field"><label>Para quién</label><input type="text" id="tareaAsignado" list="sociosDatalist" placeholder="Nombre de la persona" autocomplete="off"><datalist id="sociosDatalist"></datalist></div>
+      <div class="field-row">
+        <div class="field"><label>Para quién</label><input type="text" id="tareaAsignado" list="sociosDatalist" placeholder="Nombre de la persona" autocomplete="off"><datalist id="sociosDatalist"></datalist></div>
+        <div class="field"><label>Fecha límite (opcional)</label><input type="date" id="tareaFechaLimite"></div>
+      </div>
+      <div class="field"><label>Estado inicial</label>
+        <div class="chip-grid" id="tareaEstadoGrid">
+          <div class="chip active" data-val="pendiente">Pendiente</div>
+          <div class="chip" data-val="en_progreso">En progreso</div>
+        </div>
+      </div>
       <button class="btn-submit teal" id="tareaSubmit" style="margin-bottom:16px;">+ Añadir tarea</button>
     </div>
     <div id="tareasList"></div>
@@ -318,6 +337,15 @@
   if (!SOCIO) askName(); else document.getElementById('whoamiName').textContent = SOCIO;
   document.getElementById('whoamiBtn').onclick = askName;
   document.getElementById('tareaAsignado').value = SOCIO || '';
+
+  let tareaEstadoSel = 'pendiente';
+  document.querySelectorAll('#tareaEstadoGrid .chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#tareaEstadoGrid .chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      tareaEstadoSel = chip.dataset.val;
+    });
+  });
 
   document.querySelectorAll('.viewtab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -377,15 +405,25 @@
         grupos.get(t.asignado_a).push(t);
       });
 
+      const hoyStr = hoyLocalISO();
       let html = '';
       grupos.forEach((tareas, persona) => {
         const pendientes = tareas.filter(t => !t.hecha).length;
         html += `<div class="tarea-grupo-title">${persona} · ${pendientes} pendiente${pendientes === 1 ? '' : 's'}</div>`;
-        html += tareas.map(t => `
-          <div class="tarea-row ${t.hecha ? 'hecha' : ''}">
+        html += tareas.map(t => {
+          const atrasada = !t.hecha && t.fecha_limite && t.fecha_limite < hoyStr;
+          return `
+          <div class="tarea-row ${t.hecha ? 'hecha' : ''} ${atrasada ? 'atrasada' : ''}">
             <div>
               <div class="tarea-desc">${t.descripcion}</div>
-              ${t.creado_por ? `<div class="tarea-meta">Añadida por ${t.creado_por}</div>` : ''}
+              <div class="tarea-meta">
+                ${!t.hecha ? `<select class="tarea-estado ${t.estado}" data-id="${t.id}">
+                  <option value="pendiente" ${t.estado === 'pendiente' ? 'selected' : ''}>Pendiente</option>
+                  <option value="en_progreso" ${t.estado === 'en_progreso' ? 'selected' : ''}>En progreso</option>
+                </select>` : ''}
+                ${t.fecha_limite ? `<span class="fecha-limite ${atrasada ? 'atrasada' : ''}">${atrasada ? '⚠ ' : ''}Límite: ${fechaBonita(t.fecha_limite)}</span>` : ''}
+                ${t.creado_por ? `<span>Añadida por ${t.creado_por}</span>` : ''}
+              </div>
             </div>
             <div class="tarea-right">
               <button class="tarea-del" data-id="${t.id}" aria-label="Borrar">
@@ -393,7 +431,8 @@
               </button>
               <input type="checkbox" class="tarea-check" data-id="${t.id}" ${t.hecha ? 'checked' : ''}>
             </div>
-          </div>`).join('');
+          </div>`;
+        }).join('');
       });
       list.innerHTML = html;
     }
@@ -416,6 +455,13 @@
         cargarTodo();
       });
     });
+    list.querySelectorAll('.tarea-estado').forEach(sel => {
+      sel.addEventListener('change', async () => {
+        const { error } = await sb.from('tareas').update({ estado: sel.value }).eq('id', sel.dataset.id);
+        if (error){ alert('Error: ' + error.message); return; }
+        cargarTodo();
+      });
+    });
 
     const personas = [...new Set(TAREAS.map(t => t.asignado_a))];
     document.getElementById('sociosDatalist').innerHTML = personas.map(p => `<option value="${p}">`).join('');
@@ -424,18 +470,26 @@
   document.getElementById('tareaSubmit').addEventListener('click', async () => {
     const descripcion = document.getElementById('tareaDesc').value.trim();
     const asignado = document.getElementById('tareaAsignado').value.trim();
+    const fechaLimite = document.getElementById('tareaFechaLimite').value || null;
     if (!descripcion) return alert('Escribe qué hay que hacer');
     if (!asignado) return alert('Di para quién es la tarea');
     if (!SOCIO) return askName();
 
     const btn = document.getElementById('tareaSubmit');
     btn.disabled = true; btn.textContent = 'Guardando…';
-    const { error } = await sb.from('tareas').insert({ descripcion, asignado_a: asignado, creado_por: SOCIO });
+    const { error } = await sb.from('tareas').insert({
+      descripcion, asignado_a: asignado, creado_por: SOCIO,
+      fecha_limite: fechaLimite, estado: tareaEstadoSel,
+    });
     btn.disabled = false; btn.textContent = '+ Añadir tarea';
     if (error){ alert('Error al guardar: ' + error.message); return; }
 
     document.getElementById('tareaDesc').value = '';
     document.getElementById('tareaAsignado').value = SOCIO || '';
+    document.getElementById('tareaFechaLimite').value = '';
+    document.querySelectorAll('#tareaEstadoGrid .chip').forEach(c => c.classList.remove('active'));
+    document.querySelector('#tareaEstadoGrid .chip[data-val="pendiente"]').classList.add('active');
+    tareaEstadoSel = 'pendiente';
     cargarTodo();
   });
 

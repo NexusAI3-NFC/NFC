@@ -285,7 +285,7 @@
     <div class="sec-title">Cobros</div>
     <div class="stats-row">
       <div class="stat-box pendiente-cobro"><div class="v" id="totPendienteCobro">—</div><div class="l">Nos deben (sin entregar)</div></div>
-      <div class="stat-box cobrado-mano"><div class="v" id="totCobradoMano">—</div><div class="l">En mano (ya entregado)</div></div>
+      <div class="stat-box cobrado-mano"><div class="v" id="totCobradoMano">—</div><div class="l">En mano (nuestro beneficio)</div></div>
     </div>
 
     <div class="sec-title">Stock real (lo que compráis)</div>
@@ -630,7 +630,7 @@
       sb.from('pedidos_pendientes').select('*').order('fecha_limite', {ascending:true, nullsFirst:false}),
       sb.from('tarifas_redes_sociales').select('*').order('videos'),
       sb.from('clientes_crm').select('*').order('nombre'),
-      sb.from('ventas').select('precio_venta, entregado'),
+      sb.from('ventas').select('precio_venta, entregado, producto_id'),
     ]);
     PRODUCTOS = productos || [];
     STOCK = stock || [];
@@ -681,8 +681,13 @@
       document.getElementById('totAhorro').textContent = money(GLOBAL.ahorro_acumulado);
     }
 
+    // "En mano" es beneficio, no ingreso bruto: a cada venta ya entregada
+    // se le resta el coste de la unidad vendida (coste_medio_unidad de
+    // resumen_stock), no los gastos generales de compra de stock.
+    const costeUnidad = new Map(STOCK.map(s => [s.id, Number(s.coste_medio_unidad) || 0]));
     const pendienteCobro = COBROS.filter(v => !v.entregado).reduce((s, v) => s + Number(v.precio_venta || 0), 0);
-    const cobradoMano = COBROS.filter(v => v.entregado).reduce((s, v) => s + Number(v.precio_venta || 0), 0);
+    const cobradoMano = COBROS.filter(v => v.entregado)
+      .reduce((s, v) => s + (Number(v.precio_venta || 0) - (costeUnidad.get(v.producto_id) || 0)), 0);
     document.getElementById('totPendienteCobro').textContent = money(pendienteCobro);
     document.getElementById('totCobradoMano').textContent = money(cobradoMano);
 
