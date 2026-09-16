@@ -222,7 +222,10 @@
     <svg viewBox="0 0 400 400"><rect width="400" height="400" rx="72" fill="#14110D"/><line x1="108" y1="108" x2="292" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><line x1="292" y1="108" x2="108" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><circle cx="108" cy="108" r="27" fill="#C6703C"/><circle cx="292" cy="108" r="27" fill="#C6703C"/><circle cx="108" cy="292" r="27" fill="#C6703C"/><circle cx="292" cy="292" r="27" fill="#C6703C"/><circle cx="200" cy="200" r="33" fill="#C6703C"/></svg>
     Agenda Clientes
   </div>
-  <button class="whoami" id="whoamiBtn">👤 <span id="whoamiName">—</span></button>
+  <div style="display:flex; gap:8px;">
+    <a class="whoami" href="index.html" title="Control NFC" style="text-decoration:none;">🏠</a>
+    <button class="whoami" id="whoamiBtn">👤 <span id="whoamiName">—</span></button>
+  </div>
 </header>
 
 <div class="viewtabs">
@@ -923,13 +926,15 @@
 
   // =====================================================================
   // FICHA DE CLIENTE EN PDF — todo en el navegador, sin backend (jsPDF)
+  // Estilo tipo documento/factura: papel claro, caja de fecha, campos de
+  // formulario subrayados y banda de pie en crema (referencia: plantilla
+  // de ficha de cliente guardada desde Pinterest).
   // =====================================================================
   const PDF_INK = [20, 17, 13];
   const PDF_RUST = [198, 112, 60];
-  const PDF_TEAL = [31, 158, 140];
   const PDF_SLATE = [130, 122, 110];
   const PDF_PAPER = [244, 239, 228];
-  const PDF_LINE = [225, 218, 204];
+  const PDF_LINE = [214, 204, 184];
 
   function generarFichaPDF(cliente, reunionesCliente, comprasCliente){
     const { jsPDF } = window.jspdf;
@@ -938,18 +943,25 @@
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const maxWidth = pageWidth - margin * 2;
+    const bandH = 14;
     let y = margin;
     let pageNum = 1;
 
     function footer(){
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
-      doc.setTextColor(...PDF_SLATE);
-      doc.text('Nexus · Agenda de clientes', margin, pageHeight - 10);
-      doc.text(`Página ${pageNum}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
+      doc.setFillColor(...PDF_PAPER);
+      doc.rect(0, pageHeight - bandH, pageWidth, bandH, 'F');
+      doc.setDrawColor(...PDF_LINE); doc.setLineWidth(0.3);
+      doc.line(0, pageHeight - bandH, pageWidth, pageHeight - bandH);
+      const midY = pageHeight - bandH / 2 + 1.2;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...PDF_INK);
+      doc.text('NEXUS', margin, midY);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...PDF_SLATE);
+      doc.text('Agenda de clientes', margin + 15, midY);
+      doc.text(`Página ${pageNum}`, pageWidth - margin, midY, { align: 'right' });
     }
 
     function ensureSpace(needed){
-      if (y + needed > pageHeight - 20){
+      if (y + needed > pageHeight - (bandH + 6)){
         footer();
         doc.addPage();
         pageNum++;
@@ -980,80 +992,128 @@
       y += gap;
     }
 
-    function sectionTitle(txt, color){
+    function sectionLabel(txt){
       ensureSpace(16);
-      doc.setFillColor(...color);
-      doc.rect(margin, y - 4.5, 3, 11, 'F');
-      text(txt, margin + 7, 12.5, { bold: true, size: 12.5, color: PDF_INK });
-      y += 10;
+      text(txt.toUpperCase(), margin, 11, { bold: true, size: 10.5, color: PDF_INK });
+      y += 3;
+      doc.setDrawColor(...PDF_RUST); doc.setLineWidth(0.7);
+      doc.line(margin, y, margin + 26, y);
+      doc.setLineWidth(0.3);
+      y += 8;
     }
 
-    // ---- Cabecera con marca ----
-    doc.setFillColor(...PDF_INK);
-    doc.rect(0, 0, pageWidth, 34, 'F');
-    text('NEXUS', margin, 11, { size: 10, bold: true, color: PDF_RUST, atY: 13 });
-    text('Ficha de cliente', margin, 18, { bold: true, color: PDF_PAPER, atY: 25 });
-    text(`Generada el ${new Date().toLocaleDateString('es-ES')}`, pageWidth - margin, 9, { color: PDF_PAPER, align: 'right', atY: 13 });
-    y = 44;
+    // ---- Marca (mismo icono X de Nexus que usa el resto de la app) ----
+    function drawLogo(x0, y0, s){
+      const inset = s * 0.19;
+      doc.setFillColor(...PDF_INK);
+      doc.roundedRect(x0, y0, s, s, s * 0.18, s * 0.18, 'F');
+      doc.setDrawColor(...PDF_RUST); doc.setLineWidth(s * 0.1); doc.setLineCap(1);
+      doc.line(x0 + inset, y0 + inset, x0 + s - inset, y0 + s - inset);
+      doc.line(x0 + s - inset, y0 + inset, x0 + inset, y0 + s - inset);
+      doc.setFillColor(...PDF_RUST);
+      const r = s * 0.065;
+      [[inset, inset], [s - inset, inset], [inset, s - inset], [s - inset, s - inset], [s / 2, s / 2]]
+        .forEach(([dx, dy]) => doc.circle(x0 + dx, y0 + dy, r, 'F'));
+      doc.setLineWidth(0.3); doc.setLineCap(0);
+    }
 
-    // ---- Nombre + datos de contacto ----
-    text(cliente.nombre, margin, 17, { size: 16, bold: true, color: PDF_INK });
-    y += 9;
-    if (cliente.contacto) paragraph('Contacto', cliente.contacto, { gap: 2 });
-    if (cliente.telefono) paragraph('Teléfono', cliente.telefono, { gap: 2 });
-    if (cliente.email) paragraph('Email', cliente.email, { gap: 2 });
-    y += 2;
+    // ---- Cabecera: logo + nombre a la izquierda, caja de fecha a la derecha ----
+    const logoSize = 13;
+    drawLogo(margin, y, logoSize);
+    text('NEXUS', margin + logoSize + 5, 11, { size: 13, bold: true, color: PDF_INK, atY: y + 6 });
+    text('Ficha de cliente', margin + logoSize + 5, 9, { size: 9.5, color: PDF_SLATE, atY: y + 11.5 });
+
+    const boxW = 46, boxH = logoSize, boxX = pageWidth - margin - boxW, boxY = y;
+    doc.setDrawColor(...PDF_LINE); doc.setLineWidth(0.35);
+    doc.rect(boxX, boxY, boxW, boxH, 'S');
+    const splitX = boxX + 18;
+    doc.line(splitX, boxY, splitX, boxY + boxH);
+    text('FECHA', boxX + 4, 8, { size: 7.5, bold: true, color: PDF_INK, atY: boxY + boxH / 2 + 1.5 });
+    text(new Date().toLocaleDateString('es-ES'), splitX + 4, 8, { size: 8.5, color: PDF_INK, atY: boxY + boxH / 2 + 1.5 });
+
+    y += logoSize + 10;
+    doc.setDrawColor(...PDF_LINE); doc.setLineWidth(0.35);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 11;
+
+    // ---- Datos del cliente: formulario de dos columnas con subrayado ----
+    const colW = (maxWidth - 10) / 2;
+    function campo(label, valor, x, w){
+      text(label.toUpperCase(), x, 7.5, { size: 7.5, bold: true, color: PDF_SLATE, atY: y });
+      const vy = y + 6;
+      text(valor || '—', x, 10.5, { size: 10.5, color: PDF_INK, atY: vy });
+      doc.setDrawColor(...PDF_LINE); doc.setLineWidth(0.3);
+      doc.line(x, vy + 2.5, x + w, vy + 2.5);
+    }
+    campo('Cliente', cliente.nombre, margin, colW);
+    campo('Teléfono', cliente.telefono, margin + colW + 10, colW);
+    y += 16;
+    campo('Contacto', cliente.contacto, margin, colW);
+    campo('Email', cliente.email, margin + colW + 10, colW);
+    y += 18;
+
     if (cliente.notas){
-      ensureSpace(14);
-      doc.setDrawColor(...PDF_LINE);
       const notasLines = doc.splitTextToSize(cliente.notas, maxWidth - 12);
       const boxHeight = notasLines.length * 5 + 14;
       ensureSpace(boxHeight);
+      doc.setDrawColor(...PDF_LINE); doc.setLineWidth(0.35);
       doc.roundedRect(margin, y, maxWidth, boxHeight, 2, 2, 'S');
-      text('Notas generales', margin + 6, 9, { bold: true, color: PDF_RUST, atY: y + 8 });
+      text('NOTAS GENERALES', margin + 6, 9, { bold: true, size: 8, color: PDF_RUST, atY: y + 8 });
       let ny = y + 15;
       doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...PDF_INK);
       notasLines.forEach(line => { doc.text(line, margin + 6, ny); ny += 5; });
-      y += boxHeight + 8;
+      y += boxHeight + 10;
     }
 
-    // ---- Compras ----
-    sectionTitle('Compras', PDF_TEAL);
+    // ---- Compras, como tabla de factura con líneas finas ----
+    sectionLabel('Compras');
     if (!comprasCliente || !comprasCliente.length){
       paragraph(null, 'Sin compras registradas todavía.', { gap: 8 });
     } else {
-      const total = comprasCliente.reduce((sum, v) => sum + Number(v.precio_venta || 0), 0);
-      ensureSpace(10);
-      text(`Total: ${money(total)} en ${comprasCliente.length} venta${comprasCliente.length===1?'':'s'}`, margin, 10.5, { bold: true, size: 10.5, color: PDF_TEAL });
-      y += 8;
-      const colFecha = margin, colProducto = margin + 34, colPrecio = pageWidth - margin;
-      ensureSpace(8);
-      text('Fecha', colFecha, 9, { bold: true, size: 8.5, color: PDF_SLATE });
-      text('Producto', colProducto, 9, { bold: true, size: 8.5, color: PDF_SLATE });
-      text('Importe', colPrecio, 9, { bold: true, size: 8.5, color: PDF_SLATE, align: 'right' });
+      const colFecha = margin, colProducto = margin + 32, colPrecio = pageWidth - margin;
+      ensureSpace(9);
+      text('FECHA', colFecha, 8, { bold: true, size: 7.5, color: PDF_SLATE });
+      text('PRODUCTO', colProducto, 8, { bold: true, size: 7.5, color: PDF_SLATE });
+      text('IMPORTE', colPrecio, 8, { bold: true, size: 7.5, color: PDF_SLATE, align: 'right' });
       y += 4;
-      doc.setDrawColor(...PDF_LINE); doc.line(margin, y, pageWidth - margin, y);
-      y += 6;
+      doc.setDrawColor(...PDF_INK); doc.setLineWidth(0.35);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 7;
       comprasCliente.forEach(v => {
-        ensureSpace(8);
+        ensureSpace(9);
         text(fechaCorta(v.fecha || (v.created_at || '').slice(0,10)), colFecha, 10, { size: 9.5 });
         text(v.productos?.nombre || 'Producto', colProducto, 10, { size: 9.5 });
         text(money(v.precio_venta), colPrecio, 10, { size: 9.5, align: 'right' });
-        y += 7;
+        y += 5;
+        doc.setDrawColor(...PDF_LINE); doc.setLineWidth(0.25);
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 6;
       });
-      y += 4;
+
+      const total = comprasCliente.reduce((sum, v) => sum + Number(v.precio_venta || 0), 0);
+      const totalBoxW = 62, totalBoxH = 12;
+      ensureSpace(totalBoxH + 6);
+      const tbX = pageWidth - margin - totalBoxW, tbY = y + 2;
+      doc.setFillColor(...PDF_PAPER);
+      doc.rect(tbX, tbY, totalBoxW, totalBoxH, 'F');
+      doc.setDrawColor(...PDF_LINE); doc.setLineWidth(0.35);
+      doc.rect(tbX, tbY, totalBoxW, totalBoxH, 'S');
+      const tMidY = tbY + totalBoxH / 2 + 1.5;
+      text('TOTAL', tbX + 5, 9, { bold: true, size: 9, color: PDF_INK, atY: tMidY });
+      text(money(total), pageWidth - margin - 5, 10.5, { bold: true, size: 10.5, color: PDF_INK, align: 'right', atY: tMidY });
+      y = tbY + totalBoxH + 10;
     }
 
     // ---- Historial de reuniones ----
-    sectionTitle('Historial de reuniones', PDF_RUST);
+    sectionLabel('Historial de reuniones');
     const ordenadas = [...(reunionesCliente || [])].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
     if (!ordenadas.length){
       paragraph(null, 'Sin reuniones registradas todavía.', { gap: 8 });
     } else {
       ordenadas.forEach(r => {
         ensureSpace(14);
-        doc.setFillColor(...PDF_RUST);
-        doc.circle(margin + 1, y - 1.5, 1.1, 'F');
+        doc.setDrawColor(...PDF_RUST); doc.setLineWidth(0.6);
+        doc.circle(margin + 1, y - 1.5, 1.3, 'S');
         text(`${fechaBonita(r.fecha)}${r.hora ? ' · ' + r.hora.slice(0,5) : ''}`, margin + 6, 11, { bold: true, size: 10.5, color: PDF_INK });
         y += 6;
         if (r.producto_vendido) paragraph('Vendido', `${r.producto_vendido} — ${money(r.precio_vendido)}`, { gap: 2 });
@@ -1061,7 +1121,8 @@
         if (r.acordado) paragraph('Acordado', r.acordado, { gap: 2 });
         y += 4;
         ensureSpace(2);
-        doc.setDrawColor(...PDF_LINE); doc.line(margin, y, pageWidth - margin, y);
+        doc.setDrawColor(...PDF_LINE); doc.setLineWidth(0.3);
+        doc.line(margin, y, pageWidth - margin, y);
         y += 6;
       });
     }
