@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
 <style>
   :root{
     --ink:#14110D; --ink-soft:#1C1712; --ink-softer:#241E17;
@@ -427,28 +428,9 @@
 
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  let SOCIO = localStorage.getItem('nexus_socio');
-  function askName(){
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = `<div class="modal-box">
-      <h3>¿Quién eres?</h3>
-      <p>Se queda guardado en este móvil, no hace falta volver a escribirlo.</p>
-      <div class="field"><input type="text" id="nameInput" placeholder="Tu nombre"></div>
-      <button class="btn-submit" id="nameSubmit">Continuar</button>
-    </div>`;
-    document.body.appendChild(overlay);
-    document.getElementById('nameSubmit').onclick = () => {
-      const v = document.getElementById('nameInput').value.trim();
-      if (!v) return;
-      localStorage.setItem('nexus_socio', v);
-      SOCIO = v;
-      document.getElementById('whoamiName').textContent = v;
-      overlay.remove();
-    };
-  }
-  if (!SOCIO) askName(); else document.getElementById('whoamiName').textContent = SOCIO;
-  document.getElementById('whoamiBtn').onclick = askName;
+  let SOCIO = null;
+  NexusAuth.init(sb);
+  document.getElementById('whoamiBtn').onclick = () => NexusAuth.signOut(sb);
 
   document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -895,7 +877,7 @@
     if (!lineas.length) return alert('Añade al menos un producto al pedido');
     if (!cliente) return alert('Escribe el nombre del cliente');
     if (entrega === 'pendiente' && !fechaDesde) return alert('Pon la fecha acordada con el cliente');
-    if (!SOCIO) return askName();
+    if (!SOCIO) return alert('Espera a que cargue tu sesión e inténtalo de nuevo.');
 
     const sinStock = lineas.filter(l => {
       if (l.tipo !== 'simple') return false;
@@ -941,7 +923,7 @@
     if (!proveedor) return alert('Elige un proveedor');
     if (isNaN(cantidad) || cantidad <= 0) return alert('Cantidad no válida');
     if (isNaN(coste) || coste < 0) return alert('Coste no válido');
-    if (!SOCIO) return askName();
+    if (!SOCIO) return alert('Espera a que cargue tu sesión e inténtalo de nuevo.');
 
     const btn = document.getElementById('gastoSubmit');
     btn.disabled = true; btn.textContent = 'Guardando…';
@@ -966,7 +948,7 @@
     if (!categoria) return alert('Elige una categoría');
     if (!concepto) return alert('Describe el gasto');
     if (isNaN(importe) || importe < 0) return alert('Importe no válido');
-    if (!SOCIO) return askName();
+    if (!SOCIO) return alert('Espera a que cargue tu sesión e inténtalo de nuevo.');
 
     const btn = document.getElementById('generalSubmit');
     btn.disabled = true; btn.textContent = 'Guardando…';
@@ -987,7 +969,7 @@
 
     if (!tipo) return alert('Elige aportar o retirar');
     if (isNaN(importe) || importe <= 0) return alert('Importe no válido');
-    if (!SOCIO) return askName();
+    if (!SOCIO) return alert('Espera a que cargue tu sesión e inténtalo de nuevo.');
 
     const btn = document.getElementById('ahorroSubmit');
     btn.disabled = true; btn.textContent = 'Guardando…';
@@ -1051,20 +1033,21 @@
     cargarTodo(); // refresco inmediato para quien borra; el resto lo recibe por tiempo real
   }
 
-  sb.channel('cambios-en-vivo')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'ventas' }, cargarTodo)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'compras' }, cargarTodo)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos_generales' }, cargarTodo)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'ahorros' }, cargarTodo)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes_crm' }, cargarTodo)
-    .subscribe();
+  function suscribirCambiosEnVivo(){
+    sb.channel('cambios-en-vivo')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ventas' }, cargarTodo)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'compras' }, cargarTodo)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos_generales' }, cargarTodo)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ahorros' }, cargarTodo)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes_crm' }, cargarTodo)
+      .subscribe();
+  }
 
   // =====================================================================
   // 10. RED DE SEGURIDAD — además del tiempo real, refresca cada 3s por
   //     si el aviso en directo se pierde por lo que sea (wifi, pestaña
   //     que estuvo dormida...). No hace daño tenerlo de más.
   // =====================================================================
-  setInterval(cargarTodo, 3000);
 
   // =====================================================================
   // 11. AVISOS DEL NAVEGADOR — cuando llega un pedido nuevo hecho por un
@@ -1112,7 +1095,13 @@
     idsPedidosConocidos = actuales;
   }
 
-  cargarTodo();
+  NexusAuth.ready.then(({ nombre }) => {
+    SOCIO = nombre;
+    document.getElementById('whoamiName').textContent = nombre;
+    cargarTodo();
+    suscribirCambiosEnVivo();
+    setInterval(cargarTodo, 3000);
+  });
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 </script>

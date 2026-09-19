@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="auth.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root{
@@ -315,31 +316,9 @@
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   };
 
-  // Misma identidad que Control NFC — mismo dominio, misma localStorage,
-  // así que si ya dijiste quién eres allí, aquí ya lo sabe.
-  let SOCIO = localStorage.getItem('nexus_socio');
-  function askName(){
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = `<div class="modal-box">
-      <h3>¿Quién eres?</h3>
-      <p style="font-size:13.5px; color:var(--paper-dim); margin-bottom:18px;">Se queda guardado en este móvil, no hace falta volver a escribirlo.</p>
-      <div class="field"><input type="text" id="nameInput" placeholder="Tu nombre"></div>
-      <button class="btn-submit" id="nameSubmit">Continuar</button>
-    </div>`;
-    document.body.appendChild(overlay);
-    document.getElementById('nameSubmit').onclick = () => {
-      const v = document.getElementById('nameInput').value.trim();
-      if (!v) return;
-      localStorage.setItem('nexus_socio', v);
-      SOCIO = v;
-      document.getElementById('whoamiName').textContent = v;
-      overlay.remove();
-    };
-  }
-  if (!SOCIO) askName(); else document.getElementById('whoamiName').textContent = SOCIO;
-  document.getElementById('whoamiBtn').onclick = askName;
-  document.getElementById('tareaAsignado').value = SOCIO || '';
+  let SOCIO = null;
+  NexusAuth.init(sb);
+  document.getElementById('whoamiBtn').onclick = () => NexusAuth.signOut(sb);
 
   let tareaEstadoSel = 'pendiente';
   document.querySelectorAll('#tareaEstadoGrid .chip').forEach(chip => {
@@ -476,7 +455,7 @@
     const fechaLimite = document.getElementById('tareaFechaLimite').value || null;
     if (!descripcion) return alert('Escribe qué hay que hacer');
     if (!asignado) return alert('Di para quién es la tarea');
-    if (!SOCIO) return askName();
+    if (!SOCIO) return alert('Espera a que cargue tu sesión e inténtalo de nuevo.');
 
     const btn = document.getElementById('tareaSubmit');
     btn.disabled = true; btn.textContent = 'Guardando…';
@@ -865,7 +844,7 @@
       if (producto){
         const precio = parseFloat(document.getElementById('rPrecio').value);
         if (isNaN(precio) || precio < 0) return alert('Pon el precio de lo vendido (o elige "Nada" si no se ha vendido nada)');
-        if (!SOCIO){ askName(); return; }
+        if (!SOCIO){ alert('Espera a que cargue tu sesión e inténtalo de nuevo.'); return; }
         productoVendidoLabel = producto.nombre + (producto.nombre === 'Redes Sociales' && rRedesVideos ? ` (${rRedesVideos} vídeos/mes)` : '');
         precioVendido = precio;
 
@@ -1134,18 +1113,25 @@
   // =====================================================================
   // TIEMPO REAL — igual que el resto de apps de Nexus, se actualiza solo
   // =====================================================================
-  sb.channel('agenda-cambios')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes_crm' }, cargarTodo)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'reuniones' }, cargarTodo)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'tareas' }, cargarTodo)
-    .subscribe();
+  function suscribirCambiosEnVivo(){
+    sb.channel('agenda-cambios')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes_crm' }, cargarTodo)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reuniones' }, cargarTodo)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tareas' }, cargarTodo)
+      .subscribe();
+  }
 
-  // Red de seguridad — igual que Control NFC, refresca cada 3s por si el
-  // aviso en directo se pierde (wifi, pestaña dormida...).
-  setInterval(cargarTodo, 3000);
-
-  initCalendar();
-  cargarTodo();
+  NexusAuth.ready.then(({ nombre }) => {
+    SOCIO = nombre;
+    document.getElementById('whoamiName').textContent = nombre;
+    document.getElementById('tareaAsignado').value = SOCIO || '';
+    initCalendar();
+    cargarTodo();
+    suscribirCambiosEnVivo();
+    // Red de seguridad — igual que Control NFC, refresca cada 3s por si el
+    // aviso en directo se pierde (wifi, pestaña dormida...).
+    setInterval(cargarTodo, 3000);
+  });
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 </script>
