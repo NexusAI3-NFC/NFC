@@ -11,6 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="auth.js"></script>
+<script src="push.js"></script>
 <style>
   :root{
     --ink:#14110D; --ink-soft:#1C1712; --ink-softer:#241E17;
@@ -186,6 +187,36 @@
   .type-tab{ flex:1; text-align:center; padding:10px 6px; border-radius:10px; font-size:13px; font-weight:600; color:var(--slate); }
   .type-tab.active{ background:var(--rust); color:var(--paper); }
   .subview{ display:none; } .subview.active{ display:block; }
+
+  /* ---- Tareas ---- */
+  .tareas-form{ background:var(--ink-soft); border:1px solid var(--line); border-radius:16px; padding:16px 16px 6px; margin-bottom:22px; }
+  .tarea-grupo-title{ font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin:22px 0 10px; }
+  .tarea-grupo-title:first-of-type{ margin-top:0; }
+  .tarea-row{
+    display:flex; justify-content:space-between; align-items:center; gap:12px;
+    background:var(--ink-soft); border:1px solid var(--line); border-radius:14px;
+    padding:14px 16px; margin-bottom:10px;
+  }
+  .tarea-row.hecha{ opacity:.5; }
+  .tarea-row.atrasada{ border-color:var(--bad); background:linear-gradient(135deg, rgba(217,83,79,0.10), var(--ink-soft)); }
+  .tarea-desc{ font-size:14.5px; font-weight:600; }
+  .tarea-desc-sub{ font-size:12.5px; color:var(--slate); margin-top:2px; }
+  .tarea-row.hecha .tarea-desc{ text-decoration:line-through; }
+  .tarea-meta{ font-size:11.5px; color:var(--slate); margin-top:3px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .tarea-meta .fecha-limite.atrasada{ color:var(--bad); font-weight:700; }
+  .tarea-estado{
+    font-family:var(--mono); font-size:10px; font-weight:700; border-radius:20px; border:none;
+    padding:4px 18px 4px 9px; cursor:pointer; appearance:none; -webkit-appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239A9184' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 4px center; background-size:11px;
+  }
+  .tarea-estado.pendiente{ background:rgba(232,185,61,0.18); color:var(--gold); }
+  .tarea-estado.en_progreso{ background:rgba(155,126,217,0.18); color:var(--purple); }
+  .tarea-right{ display:flex; align-items:center; gap:14px; flex-shrink:0; }
+  .tarea-del{ width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--slate); background:none; border:none; }
+  .tarea-del:active{ background:rgba(217,83,79,0.15); color:var(--bad); }
+  .tarea-del svg{ width:14px; height:14px; }
+  .tarea-check{ width:22px; height:22px; accent-color:var(--teal); cursor:pointer; }
 
   .btn-submit{
     width:100%; padding:16px; border-radius:14px; background:var(--rust); color:var(--paper);
@@ -396,6 +427,23 @@
     <div id="pendientesList"></div>
   </section>
 
+  <section class="view" id="view-tareas">
+    <div class="tareas-form">
+      <div class="field"><label>Título</label><input type="text" id="tareaTitulo" placeholder="Título corto"></div>
+      <div class="field"><label>Descripción (opcional)</label><textarea id="tareaDesc" placeholder="Detalles" style="width:100%; min-height:70px; background:var(--ink); border:1px solid var(--line); border-radius:10px; color:var(--paper); padding:10px 12px; font-family:var(--sans); font-size:14px;"></textarea></div>
+      <div class="field"><label>Para quién</label><div class="chip-grid" id="tareaAsignadoGrid"></div></div>
+      <div class="field"><label>Fecha límite (opcional)</label><input type="date" id="tareaFechaLimite"></div>
+      <div class="field"><label>Estado inicial</label>
+        <div class="chip-grid" id="tareaEstadoGrid">
+          <div class="chip active" data-val="pendiente">Pendiente</div>
+          <div class="chip" data-val="en_progreso">En progreso</div>
+        </div>
+      </div>
+      <button class="btn-submit teal" id="tareaSubmit" style="margin-bottom:16px;">+ Añadir tarea</button>
+    </div>
+    <div id="tareasList"></div>
+  </section>
+
 </main>
 
 <nav class="tabbar">
@@ -415,6 +463,10 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
     <span>Pendientes</span>
     <span id="pendientesBadge" style="display:none; position:absolute; top:2px; right:14px; background:var(--bad); color:#fff; font-size:9px; font-family:var(--mono); font-weight:800; min-width:15px; height:15px; border-radius:8px; align-items:center; justify-content:center;"></span>
+  </button>
+  <button class="tab" data-view="tareas">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+    <span>Tareas</span>
   </button>
   <button class="tab" data-view="historial">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
@@ -599,14 +651,24 @@
   let PENDIENTES = [];
   let CLIENTES_CRM = [];
   let COBROS = [];
+  let TAREAS = [];
+  let SOCIOS_LIST = []; // [{user_id, nombre}]
+  let SOCIO_ID = null;
+  let tareaAsignadoSel = null;
+  let tareaEstadoSel = 'pendiente';
   const money = n => (Number(n)||0).toLocaleString('es-ES', {style:'currency', currency:'EUR'});
   const fechaBonita = s => s ? new Date(s+'T00:00:00').toLocaleDateString('es-ES', {day:'numeric', month:'short'}) : '';
+  const fechaBonitaLarga = s => s ? new Date(s+'T00:00:00').toLocaleDateString('es-ES', {day:'numeric', month:'long', year:'numeric'}) : '';
+  const hoyLocalISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  };
 
   let ventaProductoId = null;
   let gastoProductoId = null;
 
   async function cargarTodo(){
-    const [{data: productos}, {data: stock}, {data: global}, {data: pendientes}, {data: tarifas}, {data: clientesCrm}, {data: cobros}] = await Promise.all([
+    const [{data: productos}, {data: stock}, {data: global}, {data: pendientes}, {data: tarifas}, {data: clientesCrm}, {data: cobros}, {data: tareas}] = await Promise.all([
       sb.from('productos').select('*').eq('activo', true).order('nombre'),
       sb.from('resumen_stock').select('*').order('nombre'),
       sb.from('resumen_global').select('*').single(),
@@ -614,6 +676,7 @@
       sb.from('tarifas_redes_sociales').select('*').order('videos'),
       sb.from('clientes_crm').select('*').order('nombre'),
       sb.from('ventas').select('precio_venta, entregado, producto_id'),
+      sb.from('tareas').select('*').order('hecha', { ascending: true }).order('created_at', { ascending: false }),
     ]);
     PRODUCTOS = productos || [];
     STOCK = stock || [];
@@ -622,13 +685,143 @@
     TARIFAS_REDES = tarifas || [];
     CLIENTES_CRM = clientesCrm || [];
     COBROS = cobros || [];
+    TAREAS = tareas || [];
     detectarPedidosNuevos();
     renderInicio();
     renderProductGrids();
     renderPendientes();
     renderClientesDatalist();
+    renderTareas();
     cargarHistorial();
   }
+
+  async function cargarSocios(){
+    const { data } = await sb.from('socios').select('user_id, nombre').order('nombre');
+    SOCIOS_LIST = (data || []).filter(s => s.user_id);
+    const grid = document.getElementById('tareaAsignadoGrid');
+    if (!grid) return;
+    grid.innerHTML = SOCIOS_LIST.map(s => `<div class="chip" data-val="${s.user_id}">${s.nombre}</div>`).join('');
+    grid.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        grid.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        tareaAsignadoSel = chip.dataset.val;
+      });
+    });
+    const propio = SOCIO_ID && grid.querySelector(`.chip[data-val="${SOCIO_ID}"]`);
+    if (propio){ propio.classList.add('active'); tareaAsignadoSel = SOCIO_ID; }
+  }
+
+  function renderTareas(){
+    const list = document.getElementById('tareasList');
+    if (!list) return;
+    if (!TAREAS.length){
+      list.innerHTML = '<div class="empty">Sin tareas pendientes — añade la primera arriba.</div>';
+      return;
+    }
+    const grupos = new Map();
+    TAREAS.forEach(t => {
+      if (!grupos.has(t.asignado_a)) grupos.set(t.asignado_a, []);
+      grupos.get(t.asignado_a).push(t);
+    });
+
+    const hoyStr = hoyLocalISO();
+    let html = '';
+    grupos.forEach((tareas, persona) => {
+      const pendientes = tareas.filter(t => !t.hecha).length;
+      html += `<div class="tarea-grupo-title">${persona} · ${pendientes} pendiente${pendientes === 1 ? '' : 's'}</div>`;
+      html += tareas.map(t => {
+        const atrasada = !t.hecha && t.fecha_limite && t.fecha_limite < hoyStr;
+        return `
+        <div class="tarea-row ${t.hecha ? 'hecha' : ''} ${atrasada ? 'atrasada' : ''}">
+          <div>
+            <div class="tarea-desc">${t.titulo || t.descripcion || ''}</div>
+            ${t.titulo && t.descripcion ? `<div class="tarea-desc-sub">${t.descripcion}</div>` : ''}
+            <div class="tarea-meta">
+              ${!t.hecha ? `<select class="tarea-estado ${t.estado}" data-id="${t.id}">
+                <option value="pendiente" ${t.estado === 'pendiente' ? 'selected' : ''}>Pendiente</option>
+                <option value="en_progreso" ${t.estado === 'en_progreso' ? 'selected' : ''}>En progreso</option>
+              </select>` : ''}
+              ${t.fecha_limite ? `<span class="fecha-limite ${atrasada ? 'atrasada' : ''}">${atrasada ? '⚠ ' : ''}Límite: ${fechaBonitaLarga(t.fecha_limite)}</span>` : ''}
+              ${t.creado_por ? `<span>Añadida por ${t.creado_por}</span>` : ''}
+            </div>
+          </div>
+          <div class="tarea-right">
+            <button class="tarea-del" data-id="${t.id}" aria-label="Borrar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>
+            </button>
+            <input type="checkbox" class="tarea-check" data-id="${t.id}" ${t.hecha ? 'checked' : ''}>
+          </div>
+        </div>`;
+      }).join('');
+    });
+    list.innerHTML = html;
+
+    list.querySelectorAll('.tarea-check').forEach(cb => {
+      cb.addEventListener('change', async () => {
+        const hecha = cb.checked;
+        const { error } = await sb.from('tareas')
+          .update({ hecha, fecha_hecha: hecha ? new Date().toISOString() : null })
+          .eq('id', cb.dataset.id);
+        if (error){ alert('Error: ' + error.message); cb.checked = !hecha; return; }
+        cargarTodo();
+      });
+    });
+    list.querySelectorAll('.tarea-del').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('¿Borrar esta tarea?')) return;
+        const { error } = await sb.from('tareas').delete().eq('id', btn.dataset.id);
+        if (error){ alert('Error: ' + error.message); return; }
+        cargarTodo();
+      });
+    });
+    list.querySelectorAll('.tarea-estado').forEach(sel => {
+      sel.addEventListener('change', async () => {
+        const { error } = await sb.from('tareas').update({ estado: sel.value }).eq('id', sel.dataset.id);
+        if (error){ alert('Error: ' + error.message); return; }
+        cargarTodo();
+      });
+    });
+  }
+
+  document.querySelectorAll('#tareaEstadoGrid .chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#tareaEstadoGrid .chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      tareaEstadoSel = chip.dataset.val;
+    });
+  });
+
+  document.getElementById('tareaSubmit').addEventListener('click', async () => {
+    const titulo = document.getElementById('tareaTitulo').value.trim();
+    const descripcion = document.getElementById('tareaDesc').value.trim();
+    const fechaLimite = document.getElementById('tareaFechaLimite').value || null;
+    if (!titulo) return alert('Escribe un título para la tarea');
+    if (!tareaAsignadoSel) return alert('Di para quién es la tarea');
+    if (!SOCIO || !SOCIO_ID) return alert('Espera a que cargue tu sesión e inténtalo de nuevo.');
+    const asignadoSocio = SOCIOS_LIST.find(s => s.user_id === tareaAsignadoSel);
+    if (!asignadoSocio) return alert('Selecciona para quién es la tarea');
+
+    const btn = document.getElementById('tareaSubmit');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    const { error } = await sb.from('tareas').insert({
+      titulo, descripcion: descripcion || null,
+      asignado_a: asignadoSocio.nombre, asignado_a_user_id: asignadoSocio.user_id,
+      creado_por: SOCIO, creado_por_user_id: SOCIO_ID,
+      fecha_limite: fechaLimite, estado: tareaEstadoSel,
+    });
+    btn.disabled = false; btn.textContent = '+ Añadir tarea';
+    if (error){ alert('Error al guardar: ' + error.message); return; }
+
+    document.getElementById('tareaTitulo').value = '';
+    document.getElementById('tareaDesc').value = '';
+    document.getElementById('tareaFechaLimite').value = '';
+    document.querySelectorAll('#tareaEstadoGrid .chip').forEach(c => c.classList.remove('active'));
+    document.querySelector('#tareaEstadoGrid .chip[data-val="pendiente"]').classList.add('active');
+    tareaEstadoSel = 'pendiente';
+    cargarSocios();
+    cargarTodo();
+  });
 
   // Autocompletar el campo "Cliente" de Vender con los clientes ya
   // dados de alta en la Agenda — no obliga a elegir de la lista, solo
@@ -1040,6 +1233,7 @@
       .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos_generales' }, cargarTodo)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ahorros' }, cargarTodo)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes_crm' }, cargarTodo)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tareas' }, cargarTodo)
       .subscribe();
   }
 
@@ -1066,14 +1260,26 @@
     btn.title = notifActivas ? 'Avisos activados' : 'Toca para activar avisos de pedidos nuevos';
   }
 
-  document.getElementById('notifBtn').addEventListener('click', () => {
+  document.getElementById('notifBtn').addEventListener('click', async () => {
     if (typeof Notification === 'undefined') return;
-    if (Notification.permission === 'granted'){ notifActivas = !notifActivas; actualizarBotonNotif(); return; }
-    Notification.requestPermission().then(permiso => {
-      notifActivas = (permiso === 'granted');
+    if (Notification.permission === 'granted'){
+      notifActivas = !notifActivas;
       actualizarBotonNotif();
-      if (!notifActivas) alert('Sin permiso no puedo avisarte — actívalo desde los ajustes del navegador si cambias de idea.');
-    });
+      if (notifActivas){
+        const r = await NexusPush.subscribe(sb);
+        if (!r.ok) alert('No se pudo activar el aviso en este dispositivo: ' + r.motivo);
+      }
+      return;
+    }
+    const permiso = await Notification.requestPermission();
+    notifActivas = (permiso === 'granted');
+    actualizarBotonNotif();
+    if (!notifActivas){
+      alert('Sin permiso no puedo avisarte — actívalo desde los ajustes del navegador si cambias de idea.');
+      return;
+    }
+    const r = await NexusPush.subscribe(sb);
+    if (!r.ok) alert('No se pudo activar el aviso en este dispositivo: ' + r.motivo);
   });
   actualizarBotonNotif();
 
@@ -1095,12 +1301,18 @@
     idsPedidosConocidos = actuales;
   }
 
-  NexusAuth.ready.then(({ nombre }) => {
+  NexusAuth.ready.then(({ user, nombre }) => {
     SOCIO = nombre;
+    SOCIO_ID = user.id;
     document.getElementById('whoamiName').textContent = nombre;
+    cargarSocios();
     cargarTodo();
     suscribirCambiosEnVivo();
     setInterval(cargarTodo, 3000);
+    // Si ya había permiso concedido de antes (p.ej. se reinstaló la
+    // app en este móvil), asegura que la suscripción push sigue
+    // guardada para este socio en este dispositivo.
+    if (notifActivas) NexusPush.subscribe(sb);
   });
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');

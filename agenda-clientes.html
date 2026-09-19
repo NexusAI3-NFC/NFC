@@ -11,6 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="auth.js"></script>
+<script src="push.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root{
@@ -108,6 +109,7 @@
   .tarea-row.hecha{ opacity:.5; }
   .tarea-row.atrasada{ border-color:var(--bad); background:linear-gradient(135deg, rgba(217,83,79,0.10), var(--ink-soft)); }
   .tarea-desc{ font-size:14.5px; font-weight:600; }
+  .tarea-desc-sub{ font-size:12.5px; color:var(--slate); margin-top:2px; }
   .tarea-row.hecha .tarea-desc{ text-decoration:line-through; }
   .tarea-meta{ font-size:11.5px; color:var(--slate); margin-top:3px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
   .tarea-meta .fecha-limite.atrasada{ color:var(--bad); font-weight:700; }
@@ -225,6 +227,7 @@
   </div>
   <div style="display:flex; gap:8px;">
     <a class="whoami" href="index.html" title="Control NFC" style="text-decoration:none;">🏠</a>
+    <button class="whoami" id="notifBtn" title="Avisos de tareas">🔔</button>
     <button class="whoami" id="whoamiBtn">👤 <span id="whoamiName">—</span></button>
   </div>
 </header>
@@ -280,11 +283,10 @@
 
   <section class="view" id="view-tareas">
     <div class="tareas-form">
-      <div class="field"><label>Tarea</label><input type="text" id="tareaDesc" placeholder="Qué hay que hacer"></div>
-      <div class="field-row">
-        <div class="field"><label>Para quién</label><input type="text" id="tareaAsignado" list="sociosDatalist" placeholder="Nombre de la persona" autocomplete="off"><datalist id="sociosDatalist"></datalist></div>
-        <div class="field"><label>Fecha límite (opcional)</label><input type="date" id="tareaFechaLimite"></div>
-      </div>
+      <div class="field"><label>Título</label><input type="text" id="tareaTitulo" placeholder="Título corto"></div>
+      <div class="field"><label>Descripción (opcional)</label><textarea id="tareaDesc" placeholder="Detalles"></textarea></div>
+      <div class="field"><label>Para quién</label><div class="chip-grid" id="tareaAsignadoGrid"></div></div>
+      <div class="field"><label>Fecha límite (opcional)</label><input type="date" id="tareaFechaLimite"></div>
       <div class="field"><label>Estado inicial</label>
         <div class="chip-grid" id="tareaEstadoGrid">
           <div class="chip active" data-val="pendiente">Pendiente</div>
@@ -320,6 +322,32 @@
   NexusAuth.init(sb);
   document.getElementById('whoamiBtn').onclick = () => NexusAuth.signOut(sb);
 
+  function actualizarBotonNotif(){
+    const btn = document.getElementById('notifBtn');
+    if (typeof Notification === 'undefined'){ btn.style.display = 'none'; return; }
+    const activo = Notification.permission === 'granted';
+    btn.textContent = activo ? '🔔' : '🔕';
+    btn.style.opacity = activo ? '1' : '.5';
+    btn.title = activo ? 'Avisos activados' : 'Toca para activar avisos de tareas';
+  }
+  document.getElementById('notifBtn').addEventListener('click', async () => {
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission === 'granted'){
+      const r = await NexusPush.subscribe(sb);
+      if (!r.ok) alert('No se pudo activar el aviso en este dispositivo: ' + r.motivo);
+      return;
+    }
+    const permiso = await Notification.requestPermission();
+    actualizarBotonNotif();
+    if (permiso !== 'granted'){
+      alert('Sin permiso no puedo avisarte — actívalo desde los ajustes del navegador si cambias de idea.');
+      return;
+    }
+    const r = await NexusPush.subscribe(sb);
+    if (!r.ok) alert('No se pudo activar el aviso en este dispositivo: ' + r.motivo);
+  });
+  actualizarBotonNotif();
+
   let tareaEstadoSel = 'pendiente';
   document.querySelectorAll('#tareaEstadoGrid .chip').forEach(chip => {
     chip.addEventListener('click', () => {
@@ -352,6 +380,26 @@
   let PRODUCTOS = [];
   let TARIFAS_REDES = [];
   let TAREAS = [];
+  let SOCIOS_LIST = []; // [{user_id, nombre}]
+  let SOCIO_ID = null;
+  let tareaAsignadoSel = null;
+
+  async function cargarSocios(){
+    const { data } = await sb.from('socios').select('user_id, nombre').order('nombre');
+    SOCIOS_LIST = (data || []).filter(s => s.user_id);
+    const grid = document.getElementById('tareaAsignadoGrid');
+    if (!grid) return;
+    grid.innerHTML = SOCIOS_LIST.map(s => `<div class="chip" data-val="${s.user_id}">${s.nombre}</div>`).join('');
+    grid.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        grid.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        tareaAsignadoSel = chip.dataset.val;
+      });
+    });
+    const propio = SOCIO_ID && grid.querySelector(`.chip[data-val="${SOCIO_ID}"]`);
+    if (propio){ propio.classList.add('active'); tareaAsignadoSel = SOCIO_ID; }
+  }
 
   async function cargarTodo(){
     const [{ data: clientes }, { data: reuniones }, { data: productos }, { data: tarifas }, { data: tareas }] = await Promise.all([
@@ -397,7 +445,8 @@
           return `
           <div class="tarea-row ${t.hecha ? 'hecha' : ''} ${atrasada ? 'atrasada' : ''}">
             <div>
-              <div class="tarea-desc">${t.descripcion}</div>
+              <div class="tarea-desc">${t.titulo || t.descripcion || ''}</div>
+              ${t.titulo && t.descripcion ? `<div class="tarea-desc-sub">${t.descripcion}</div>` : ''}
               <div class="tarea-meta">
                 ${!t.hecha ? `<select class="tarea-estado ${t.estado}" data-id="${t.id}">
                   <option value="pendiente" ${t.estado === 'pendiente' ? 'selected' : ''}>Pendiente</option>
@@ -444,34 +493,36 @@
         cargarTodo();
       });
     });
-
-    const personas = [...new Set(TAREAS.map(t => t.asignado_a))];
-    document.getElementById('sociosDatalist').innerHTML = personas.map(p => `<option value="${p}">`).join('');
   }
 
   document.getElementById('tareaSubmit').addEventListener('click', async () => {
+    const titulo = document.getElementById('tareaTitulo').value.trim();
     const descripcion = document.getElementById('tareaDesc').value.trim();
-    const asignado = document.getElementById('tareaAsignado').value.trim();
     const fechaLimite = document.getElementById('tareaFechaLimite').value || null;
-    if (!descripcion) return alert('Escribe qué hay que hacer');
-    if (!asignado) return alert('Di para quién es la tarea');
-    if (!SOCIO) return alert('Espera a que cargue tu sesión e inténtalo de nuevo.');
+    if (!titulo) return alert('Escribe un título para la tarea');
+    if (!tareaAsignadoSel) return alert('Di para quién es la tarea');
+    if (!SOCIO || !SOCIO_ID) return alert('Espera a que cargue tu sesión e inténtalo de nuevo.');
+    const asignadoSocio = SOCIOS_LIST.find(s => s.user_id === tareaAsignadoSel);
+    if (!asignadoSocio) return alert('Selecciona para quién es la tarea');
 
     const btn = document.getElementById('tareaSubmit');
     btn.disabled = true; btn.textContent = 'Guardando…';
     const { error } = await sb.from('tareas').insert({
-      descripcion, asignado_a: asignado, creado_por: SOCIO,
+      titulo, descripcion: descripcion || null,
+      asignado_a: asignadoSocio.nombre, asignado_a_user_id: asignadoSocio.user_id,
+      creado_por: SOCIO, creado_por_user_id: SOCIO_ID,
       fecha_limite: fechaLimite, estado: tareaEstadoSel,
     });
     btn.disabled = false; btn.textContent = '+ Añadir tarea';
     if (error){ alert('Error al guardar: ' + error.message); return; }
 
+    document.getElementById('tareaTitulo').value = '';
     document.getElementById('tareaDesc').value = '';
-    document.getElementById('tareaAsignado').value = SOCIO || '';
     document.getElementById('tareaFechaLimite').value = '';
     document.querySelectorAll('#tareaEstadoGrid .chip').forEach(c => c.classList.remove('active'));
     document.querySelector('#tareaEstadoGrid .chip[data-val="pendiente"]').classList.add('active');
     tareaEstadoSel = 'pendiente';
+    cargarSocios();
     cargarTodo();
   });
 
@@ -1121,16 +1172,18 @@
       .subscribe();
   }
 
-  NexusAuth.ready.then(({ nombre }) => {
+  NexusAuth.ready.then(({ user, nombre }) => {
     SOCIO = nombre;
+    SOCIO_ID = user.id;
     document.getElementById('whoamiName').textContent = nombre;
-    document.getElementById('tareaAsignado').value = SOCIO || '';
     initCalendar();
+    cargarSocios();
     cargarTodo();
     suscribirCambiosEnVivo();
     // Red de seguridad — igual que Control NFC, refresca cada 3s por si el
     // aviso en directo se pierde (wifi, pestaña dormida...).
     setInterval(cargarTodo, 3000);
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') NexusPush.subscribe(sb);
   });
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');

@@ -43,3 +43,35 @@ self.addEventListener('fetch', (event) => {
       .catch(() => caches.match(event.request))
   );
 });
+
+// =====================================================================
+// PUSH — esto es lo que hace que llegue un aviso aunque la app esté
+// cerrada del todo. La Edge Function manda un payload JSON con título
+// y cuerpo; aquí solo lo mostramos.
+// =====================================================================
+self.addEventListener('push', (event) => {
+  let datos = { title: 'Nexus', body: 'Tienes un aviso nuevo.' };
+  try { if (event.data) datos = { ...datos, ...event.data.json() }; } catch (e) {}
+
+  event.waitUntil(
+    self.registration.showNotification(datos.title, {
+      body: datos.body,
+      icon: 'icons/icon-192.png',
+      badge: 'icons/icon-192.png',
+      data: { url: datos.url || './index.html' },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || './index.html';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((lista) => {
+      for (const cliente of lista) {
+        if (cliente.url.includes(url) && 'focus' in cliente) return cliente.focus();
+      }
+      if (clients.openWindow) return clients.openWindow(url);
+    })
+  );
+});
