@@ -12,7 +12,7 @@
 
 create table if not exists socios (
   email text primary key,
-  user_id uuid unique references auth.users(id) on delete cascade,
+  user_id uuid unique references auth.users(id) on delete set null,
   nombre text not null,
   created_at timestamptz not null default now()
 );
