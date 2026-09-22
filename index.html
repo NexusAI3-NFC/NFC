@@ -10,6 +10,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="auth.js"></script>
 <script src="push.js"></script>
 <style>
@@ -314,6 +316,8 @@
       <div class="stat-box"><div class="v" id="totBeneficio">—</div><div class="l">Beneficio</div></div>
       <div class="stat-box ahorro"><div class="v" id="totAhorro">—</div><div class="l">Ahorro guardado</div></div>
     </div>
+
+    <button class="btn-submit" id="exportarExcelBtn" style="background:var(--ink-softer); border:1.5px dashed var(--teal); color:var(--teal); margin-bottom:4px;">📊 Exportar a Excel (de dónde salen los números)</button>
 
     <div class="sec-title">Cobros</div>
     <div class="stats-row">
@@ -1229,6 +1233,165 @@
     if (error){ alert('Error al borrar: ' + error.message); return; }
     cargarTodo(); // refresco inmediato para quien borra; el resto lo recibe por tiempo real
   }
+
+  // =====================================================================
+  // EXPORTAR A EXCEL — genera un .xlsx al momento con todo el detalle
+  // (compras, gastos generales, ventas, ahorros) más unos gráficos, para
+  // poder ver de dónde sale cada número de Inicio/Cobros. Se descarga
+  // directo al dispositivo; no depende de ningún servicio externo ni
+  // guarda ninguna clave nueva.
+  // =====================================================================
+  const mesKey = iso => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
+
+  function agruparSuma(arr, keyFn, valFn){
+    const map = new Map();
+    arr.forEach(item => {
+      const k = keyFn(item) || '—';
+      map.set(k, (map.get(k) || 0) + (Number(valFn(item)) || 0));
+    });
+    return [...map.entries()].sort((a, b) => b[1] - a[1]);
+  }
+
+  function renderChartPNG(config){
+    return new Promise(resolve => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 640; canvas.height = 360;
+      const chart = new Chart(canvas.getContext('2d'), { ...config, options: { ...(config.options||{}), responsive:false, animation:false } });
+      requestAnimationFrame(() => {
+        const url = canvas.toDataURL('image/png');
+        chart.destroy();
+        resolve(url);
+      });
+    });
+  }
+
+  function coloresChart(n){
+    const base = ['#1F9E8C','#E8B93D','#C6703C','#9B7ED9','#D9534F','#5B8DEF','#6FCF97','#F2994A'];
+    return Array.from({length:n}, (_, i) => base[i % base.length]);
+  }
+
+  async function exportarExcel(){
+    const btn = document.getElementById('exportarExcelBtn');
+    btn.disabled = true; const textoOriginal = btn.textContent; btn.textContent = 'Generando…';
+    try {
+      const [{data: ventas, error: eV}, {data: compras, error: eC}, {data: generales, error: eG}, {data: ahorros, error: eA}] = await Promise.all([
+        sb.from('ventas').select('*, productos(nombre)').order('created_at', {ascending:false}),
+        sb.from('compras').select('*, productos(nombre)').order('created_at', {ascending:false}),
+        sb.from('gastos_generales').select('*').order('created_at', {ascending:false}),
+        sb.from('ahorros').select('*').order('created_at', {ascending:false}),
+      ]);
+      if (eV || eC || eG || eA) throw new Error((eV||eC||eG||eA).message);
+
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'Nexus — Control NFC';
+      wb.created = new Date();
+
+      const estiloCabecera = fila => { fila.font = { bold:true, color:{argb:'FFFFFFFF'} }; fila.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF2B2B33'} }; };
+
+      // ---- Resumen ----
+      const shResumen = wb.addWorksheet('Resumen');
+      shResumen.columns = [{ header:'Concepto', key:'k', width:34 }, { header:'Valor', key:'v', width:18 }];
+      estiloCabecera(shResumen.getRow(1));
+      const gastoTotal = Number(GLOBAL?.gasto_stock||0) + Number(GLOBAL?.gasto_general||0);
+      const beneficio = Number(GLOBAL?.ingresos_ventas||0) - gastoTotal;
+      const pendienteCobro = COBROS.filter(v => !v.entregado).reduce((s,v)=> s + Number(v.precio_venta||0), 0);
+      const cobradoBruto = COBROS.filter(v => v.entregado).reduce((s,v)=> s + Number(v.precio_venta||0), 0);
+      const enMano = cobradoBruto - Number(GLOBAL?.gasto_stock||0) - Number(GLOBAL?.gasto_general||0);
+      [
+        ['Ingresos (todas las ventas)', Number(GLOBAL?.ingresos_ventas||0)],
+        ['Gasto en stock (todas las compras)', Number(GLOBAL?.gasto_stock||0)],
+        ['Gastos generales', Number(GLOBAL?.gasto_general||0)],
+        ['Gastos totales', gastoTotal],
+        ['Beneficio', beneficio],
+        ['Ahorro guardado', Number(GLOBAL?.ahorro_acumulado||0)],
+        ['Nos deben (ventas sin entregar)', pendienteCobro],
+        ['Cobrado (ventas entregadas)', cobradoBruto],
+        ['En mano (nuestro beneficio real)', enMano],
+        ['Generado el', new Date().toLocaleString('es-ES')],
+      ].forEach(([k,v]) => shResumen.addRow({k, v: typeof v === 'number' ? Number(v.toFixed(2)) : v}));
+      shResumen.getColumn('v').numFmt = '#,##0.00 €';
+
+      // ---- Compras ----
+      const shCompras = wb.addWorksheet('Compras (stock)');
+      shCompras.columns = [
+        { header:'Fecha', key:'fecha', width:14 }, { header:'Producto', key:'producto', width:26 },
+        { header:'Proveedor', key:'proveedor', width:20 }, { header:'Cantidad', key:'cantidad', width:12 },
+        { header:'Coste total (€)', key:'coste', width:16 }, { header:'Socio', key:'socio', width:12 },
+      ];
+      estiloCabecera(shCompras.getRow(1));
+      (compras||[]).forEach(c => shCompras.addRow({ fecha:c.fecha||c.created_at?.slice(0,10), producto:c.productos?.nombre||'—', proveedor:c.proveedor, cantidad:c.cantidad, coste:Number(c.coste_total||0), socio:c.socio }));
+      shCompras.getColumn('coste').numFmt = '#,##0.00 €';
+
+      // ---- Gastos generales ----
+      const shGenerales = wb.addWorksheet('Gastos generales');
+      shGenerales.columns = [
+        { header:'Fecha', key:'fecha', width:14 }, { header:'Categoría', key:'categoria', width:20 },
+        { header:'Concepto', key:'concepto', width:28 }, { header:'Importe (€)', key:'importe', width:14 }, { header:'Socio', key:'socio', width:12 },
+      ];
+      estiloCabecera(shGenerales.getRow(1));
+      (generales||[]).forEach(g => shGenerales.addRow({ fecha:g.fecha||g.created_at?.slice(0,10), categoria:g.categoria, concepto:g.concepto, importe:Number(g.importe||0), socio:g.socio }));
+      shGenerales.getColumn('importe').numFmt = '#,##0.00 €';
+
+      // ---- Ventas ----
+      const shVentas = wb.addWorksheet('Ventas');
+      shVentas.columns = [
+        { header:'Fecha', key:'fecha', width:14 }, { header:'Producto', key:'producto', width:26 },
+        { header:'Cliente', key:'cliente', width:20 }, { header:'Precio venta (€)', key:'precio', width:16 },
+        { header:'Entregado', key:'entregado', width:12 }, { header:'Socio', key:'socio', width:12 },
+      ];
+      estiloCabecera(shVentas.getRow(1));
+      (ventas||[]).forEach(v => shVentas.addRow({ fecha:v.fecha||v.created_at?.slice(0,10), producto:v.productos?.nombre||'—', cliente:v.cliente||'—', precio:Number(v.precio_venta||0), entregado:v.entregado?'Sí':'No', socio:v.socio }));
+      shVentas.getColumn('precio').numFmt = '#,##0.00 €';
+
+      // ---- Ahorros ----
+      const shAhorros = wb.addWorksheet('Ahorros');
+      shAhorros.columns = [
+        { header:'Fecha', key:'fecha', width:14 }, { header:'Movimiento', key:'tipo', width:18 },
+        { header:'Importe (€)', key:'importe', width:14 }, { header:'Notas', key:'notas', width:26 }, { header:'Socio', key:'socio', width:12 },
+      ];
+      estiloCabecera(shAhorros.getRow(1));
+      (ahorros||[]).forEach(a => shAhorros.addRow({ fecha:a.fecha||a.created_at?.slice(0,10), tipo:a.tipo==='aportar'?'Aporte':'Retiro', importe:Number(a.importe||0), notas:a.notas||'', socio:a.socio }));
+      shAhorros.getColumn('importe').numFmt = '#,##0.00 €';
+
+      // ---- Gráficos: de dónde salen los gastos ----
+      const porProducto = agruparSuma(compras||[], c => c.productos?.nombre, c => c.coste_total).slice(0, 10);
+      const porCategoriaGasto = agruparSuma(generales||[], g => g.categoria, g => g.importe);
+      const porProveedor = agruparSuma(compras||[], c => c.proveedor, c => c.coste_total).slice(0, 10);
+      const meses = [...new Set([...(compras||[]).map(c=>mesKey(c.created_at)), ...(generales||[]).map(g=>mesKey(g.created_at)), ...(ventas||[]).filter(v=>v.entregado).map(v=>mesKey(v.created_at))])].sort();
+      const ingresosPorMes = new Map(agruparSuma((ventas||[]).filter(v=>v.entregado), v=>mesKey(v.created_at), v=>v.precio_venta));
+      const gastosPorMesMap = new Map(agruparSuma([...(compras||[]).map(c=>({mes:mesKey(c.created_at), val:c.coste_total})), ...(generales||[]).map(g=>({mes:mesKey(g.created_at), val:g.importe}))], x=>x.mes, x=>x.val));
+
+      const imgProducto = await renderChartPNG({ type:'bar', data:{ labels:porProducto.map(x=>x[0]), datasets:[{ label:'Gastado en compras (€)', data:porProducto.map(x=>Number(x[1].toFixed(2))), backgroundColor:coloresChart(porProducto.length) }] }, options:{ plugins:{ title:{ display:true, text:'Gasto en compras por producto' } } } });
+      const imgCategoria = await renderChartPNG({ type:'pie', data:{ labels:porCategoriaGasto.map(x=>x[0]), datasets:[{ data:porCategoriaGasto.map(x=>Number(x[1].toFixed(2))), backgroundColor:coloresChart(porCategoriaGasto.length) }] }, options:{ plugins:{ title:{ display:true, text:'Gastos generales por categoría' } } } });
+      const imgProveedor = await renderChartPNG({ type:'bar', data:{ labels:porProveedor.map(x=>x[0]), datasets:[{ label:'Gastado (€)', data:porProveedor.map(x=>Number(x[1].toFixed(2))), backgroundColor:coloresChart(porProveedor.length) }] }, options:{ indexAxis:'y', plugins:{ title:{ display:true, text:'Gasto por proveedor' } } } });
+      const imgMeses = await renderChartPNG({ type:'bar', data:{ labels:meses, datasets:[
+        { label:'Ingresos (cobrado)', data:meses.map(m=>Number((ingresosPorMes.get(m)||0).toFixed(2))), backgroundColor:'#1F9E8C' },
+        { label:'Gastos (compras + generales)', data:meses.map(m=>Number((gastosPorMesMap.get(m)||0).toFixed(2))), backgroundColor:'#D9534F' },
+      ] }, options:{ plugins:{ title:{ display:true, text:'Ingresos vs gastos por mes' } } } });
+
+      const shGraficos = wb.addWorksheet('Gráficos');
+      let fila = 0;
+      for (const img of [imgProducto, imgCategoria, imgProveedor, imgMeses]) {
+        const imgId = wb.addImage({ base64: img, extension:'png' });
+        shGraficos.addImage(imgId, { tl:{ col:0, row:fila }, ext:{ width:640, height:360 } });
+        fila += 19;
+      }
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `nexus-informe-${hoyLocalISO()}.xlsx`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch(e) {
+      alert('No se pudo generar el Excel: ' + e.message);
+    } finally {
+      btn.disabled = false; btn.textContent = textoOriginal;
+    }
+  }
+
+  document.getElementById('exportarExcelBtn').addEventListener('click', exportarExcel);
 
   function suscribirCambiosEnVivo(){
     sb.channel('cambios-en-vivo')
