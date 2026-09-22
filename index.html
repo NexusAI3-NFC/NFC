@@ -857,17 +857,15 @@
       document.getElementById('totAhorro').textContent = money(GLOBAL.ahorro_acumulado);
     }
 
-    // "En mano" es beneficio neto, no ingreso bruto: a cada venta ya
-    // entregada se le resta el coste de la unidad vendida (coste_medio_unidad
-    // de resumen_stock), y al total se le resta también lo acumulado en
-    // Gastos generales (compras/gastos que no van ligados a un producto
-    // concreto: envíos, herramientas, etc.), para que refleje lo que
-    // realmente queda en mano tras todos los gastos.
-    const costeUnidad = new Map(STOCK.map(s => [s.id, Number(s.coste_medio_unidad) || 0]));
+    // "En mano" es caja real, no margen contable: del dinero que ya hemos
+    // cobrado (ventas entregadas) se resta TODO lo que ya hemos gastado
+    // -- tanto en stock (gasto_stock: todo lo comprado, se haya vendido ya
+    // o no; ese dinero ya no está, esté o no el producto todavía sin
+    // vender) como en Gastos generales (envíos, herramientas, etc.) --
+    // en vez de solo el coste medio de las unidades ya vendidas.
     const pendienteCobro = COBROS.filter(v => !v.entregado).reduce((s, v) => s + Number(v.precio_venta || 0), 0);
-    const margenVentasEntregadas = COBROS.filter(v => v.entregado)
-      .reduce((s, v) => s + (Number(v.precio_venta || 0) - (costeUnidad.get(v.producto_id) || 0)), 0);
-    const cobradoMano = margenVentasEntregadas - Number(GLOBAL?.gasto_general || 0);
+    const cobradoBruto = COBROS.filter(v => v.entregado).reduce((s, v) => s + Number(v.precio_venta || 0), 0);
+    const cobradoMano = cobradoBruto - Number(GLOBAL?.gasto_stock || 0) - Number(GLOBAL?.gasto_general || 0);
     document.getElementById('totPendienteCobro').textContent = money(pendienteCobro);
     const cobradoManoEl = document.getElementById('totCobradoMano');
     cobradoManoEl.textContent = money(cobradoMano);
