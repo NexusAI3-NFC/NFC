@@ -857,15 +857,21 @@
       document.getElementById('totAhorro').textContent = money(GLOBAL.ahorro_acumulado);
     }
 
-    // "En mano" es beneficio, no ingreso bruto: a cada venta ya entregada
-    // se le resta el coste de la unidad vendida (coste_medio_unidad de
-    // resumen_stock), no los gastos generales de compra de stock.
+    // "En mano" es beneficio neto, no ingreso bruto: a cada venta ya
+    // entregada se le resta el coste de la unidad vendida (coste_medio_unidad
+    // de resumen_stock), y al total se le resta también lo acumulado en
+    // Gastos generales (compras/gastos que no van ligados a un producto
+    // concreto: envíos, herramientas, etc.), para que refleje lo que
+    // realmente queda en mano tras todos los gastos.
     const costeUnidad = new Map(STOCK.map(s => [s.id, Number(s.coste_medio_unidad) || 0]));
     const pendienteCobro = COBROS.filter(v => !v.entregado).reduce((s, v) => s + Number(v.precio_venta || 0), 0);
-    const cobradoMano = COBROS.filter(v => v.entregado)
+    const margenVentasEntregadas = COBROS.filter(v => v.entregado)
       .reduce((s, v) => s + (Number(v.precio_venta || 0) - (costeUnidad.get(v.producto_id) || 0)), 0);
+    const cobradoMano = margenVentasEntregadas - Number(GLOBAL?.gasto_general || 0);
     document.getElementById('totPendienteCobro').textContent = money(pendienteCobro);
-    document.getElementById('totCobradoMano').textContent = money(cobradoMano);
+    const cobradoManoEl = document.getElementById('totCobradoMano');
+    cobradoManoEl.textContent = money(cobradoMano);
+    cobradoManoEl.style.color = cobradoMano >= 0 ? 'var(--teal)' : 'var(--bad)';
 
     const stockList = document.getElementById('stockList');
     stockList.innerHTML = !STOCK.length ? '<div class="empty">Sin productos de stock todavía.</div>' : STOCK.map(r => `
