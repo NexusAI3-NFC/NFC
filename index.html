@@ -435,7 +435,7 @@
     <div class="tareas-form">
       <div class="field"><label>Título</label><input type="text" id="tareaTitulo" placeholder="Título corto"></div>
       <div class="field"><label>Descripción (opcional)</label><textarea id="tareaDesc" placeholder="Detalles" style="width:100%; min-height:70px; background:var(--ink); border:1px solid var(--line); border-radius:10px; color:var(--paper); padding:10px 12px; font-family:var(--sans); font-size:14px;"></textarea></div>
-      <div class="field"><label>Para quién</label><div class="chip-grid" id="tareaAsignadoGrid"></div></div>
+      <div class="field"><label>Para quién <small style="text-transform:none; letter-spacing:0;">(puedes elegir varias)</small></label><div class="chip-grid" id="tareaAsignadoGrid"></div></div>
       <div class="field"><label>Fecha límite (opcional)</label><input type="date" id="tareaFechaLimite"></div>
       <div class="field"><label>Estado inicial</label>
         <div class="chip-grid" id="tareaEstadoGrid">
@@ -656,9 +656,9 @@
   let CLIENTES_CRM = [];
   let COBROS = [];
   let TAREAS = [];
-  let SOCIOS_LIST = []; // [{user_id, nombre}]
+  let SOCIOS_LIST = []; // [{user_id, nombre, departamento}]
   let SOCIO_ID = null;
-  let tareaAsignadoSel = null;
+  let tareaAsignadosSel = new Set(); // user_ids elegidos: una tarea puede ser para varias personas
   let tareaEstadoSel = 'pendiente';
   const money = n => (Number(n)||0).toLocaleString('es-ES', {style:'currency', currency:'EUR'});
   const fechaBonita = s => s ? new Date(s+'T00:00:00').toLocaleDateString('es-ES', {day:'numeric', month:'short'}) : '';
@@ -700,21 +700,25 @@
   }
 
   async function cargarSocios(){
-    const { data } = await sb.from('socios').select('user_id, nombre').order('nombre');
+    const { data } = await sb.from('socios').select('user_id, nombre, departamento').order('departamento').order('nombre');
     SOCIOS_LIST = (data || []).filter(s => s.user_id);
     const grid = document.getElementById('tareaAsignadoGrid');
     if (!grid) return;
     grid.innerHTML = SOCIOS_LIST.map(s => `<div class="chip" data-val="${s.user_id}">${s.nombre}</div>`).join('');
     grid.querySelectorAll('.chip').forEach(chip => {
       chip.addEventListener('click', () => {
-        grid.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-        chip.classList.add('active');
-        tareaAsignadoSel = chip.dataset.val;
+        chip.classList.toggle('active');
+        if (chip.classList.contains('active')) tareaAsignadosSel.add(chip.dataset.val);
+        else tareaAsignadosSel.delete(chip.dataset.val);
       });
     });
     const propio = SOCIO_ID && grid.querySelector(`.chip[data-val="${SOCIO_ID}"]`);
-    if (propio){ propio.classList.add('active'); tareaAsignadoSel = SOCIO_ID; }
+    tareaAsignadosSel = new Set();
+    if (propio){ propio.classList.add('active'); tareaAsignadosSel.add(SOCIO_ID); }
   }
+
+  // `asignado_a` guarda los nombres separados por ", " ("Lorena, Claudia").
+  const nombresAsignados = t => (t.asignado_a || '').split(', ').filter(Boolean);
 
   function renderTareas(){
     const list = document.getElementById('tareasList');
@@ -724,9 +728,13 @@
       return;
     }
     const grupos = new Map();
+    // Una tarea compartida sale en el grupo de cada una de sus personas
+    // (es la misma tarea: marcarla en un grupo la marca en todos).
     TAREAS.forEach(t => {
-      if (!grupos.has(t.asignado_a)) grupos.set(t.asignado_a, []);
-      grupos.get(t.asignado_a).push(t);
+      nombresAsignados(t).forEach(persona => {
+        if (!grupos.has(persona)) grupos.set(persona, []);
+        grupos.get(persona).push(t);
+      });
     });
 
     const hoyStr = hoyLocalISO();
@@ -747,7 +755,8 @@
                 <option value="en_progreso" ${t.estado === 'en_progreso' ? 'selected' : ''}>En progreso</option>
               </select>` : ''}
               ${t.fecha_limite ? `<span class="fecha-limite ${atrasada ? 'atrasada' : ''}">${atrasada ? '⚠ ' : ''}Límite: ${fechaBonitaLarga(t.fecha_limite)}</span>` : ''}
-              ${t.creado_por ? `<span>Añadida por ${t.creado_por}</span>` : ''}
+              ${nombresAsignados(t).length > 1 ? `<span>👥 ${t.asignado_a}</span>` : ''}
+                ${t.creado_por ? `<span>Añadida por ${t.creado_por}</span>` : ''}
             </div>
           </div>
           <div class="tarea-right">
@@ -801,18 +810,25 @@
     const descripcion = document.getElementById('tareaDesc').value.trim();
     const fechaLimite = document.getElementById('tareaFechaLimite').value || null;
     if (!titulo) return alert('Escribe un título para la tarea');
-    if (!tareaAsignadoSel) return alert('Di para quién es la tarea');
+    if (!tareaAsignadosSel.size) return alert('Di para quién es la tarea');
     if (!SOCIO || !SOCIO_ID) return alert('Espera a que cargue tu sesión e inténtalo de nuevo.');
-    const asignadoSocio = SOCIOS_LIST.find(s => s.user_id === tareaAsignadoSel);
-    if (!asignadoSocio) return alert('Selecciona para quién es la tarea');
+    const asignados = SOCIOS_LIST.filter(s => tareaAsignadosSel.has(s.user_id));
+    if (!asignados.length) return alert('Selecciona para quién es la tarea');
+    // Departamento: el de las personas asignadas si todas son del mismo;
+    // si se mezclan, el de quien crea la tarea.
+    const deps = new Set(asignados.map(s => s.departamento || 'direccion'));
+    const departamento = deps.size === 1 ? [...deps][0] : 'direccion'; // a Control NFC solo entra Dirección
 
     const btn = document.getElementById('tareaSubmit');
     btn.disabled = true; btn.textContent = 'Guardando…';
     const { error } = await sb.from('tareas').insert({
       titulo, descripcion: descripcion || null,
-      asignado_a: asignadoSocio.nombre, asignado_a_user_id: asignadoSocio.user_id,
+      asignado_a: asignados.map(s => s.nombre).join(', '),
+      asignado_a_user_id: asignados[0].user_id,
+      asignados_user_ids: asignados.map(s => s.user_id),
       creado_por: SOCIO, creado_por_user_id: SOCIO_ID,
       fecha_limite: fechaLimite, estado: tareaEstadoSel,
+      departamento,
     });
     btn.disabled = false; btn.textContent = '+ Añadir tarea';
     if (error){ alert('Error al guardar: ' + error.message); return; }

@@ -54,6 +54,13 @@ async function enviarATodos(userIds: string[], payload: Record<string, unknown>)
 }
 
 // Solo Dirección: los avisos de pedidos/ventas no son para Marketing.
+// Todas las personas de una tarea (compartida o no). Tareas antiguas
+// solo tienen `asignado_a_user_id`.
+function asignadosDe(t: any): string[] {
+  if (Array.isArray(t.asignados_user_ids) && t.asignados_user_ids.length) return t.asignados_user_ids;
+  return t.asignado_a_user_id ? [t.asignado_a_user_id] : [];
+}
+
 async function idsDeDireccion(): Promise<string[]> {
   const { data } = await sb.from("socios").select("user_id")
     .not("user_id", "is", null)
@@ -94,8 +101,12 @@ Deno.serve(async (req) => {
     // ---- Database Webhook: nueva tarea asignada ----
     if (payload.table === "tareas" && payload.type === "INSERT") {
       const t = payload.record;
-      if (t.asignado_a_user_id) {
-        await enviarATodos([t.asignado_a_user_id], {
+      // A quien la crea no se le avisa de su propia tarea (salvo que sea
+      // solo para sí misma, como hasta ahora).
+      const ids = asignadosDe(t);
+      const destinatarios = ids.length > 1 ? ids.filter((id) => id !== t.creado_por_user_id) : ids;
+      if (destinatarios.length) {
+        await enviarATodos(destinatarios, {
           title: "Tarea nueva",
           body: t.titulo || t.descripcion || "Tienes una tarea nueva",
           url: "./agenda-clientes.html",
@@ -143,8 +154,8 @@ Deno.serve(async (req) => {
         .lte("fecha_limite", manana);
 
       for (const t of tareas || []) {
-        if (t.asignado_a_user_id) {
-          await enviarATodos([t.asignado_a_user_id], {
+        if (asignadosDe(t).length) {
+          await enviarATodos(asignadosDe(t), {
             title: "Fecha límite cerca",
             body: `${t.titulo || t.descripcion || "Una tarea"} — límite ${t.fecha_limite}`,
             url: "./agenda-clientes.html",
