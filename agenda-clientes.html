@@ -77,9 +77,10 @@
   .cal-more{ font-family:var(--mono); font-size:8px; color:var(--slate); line-height:1; }
 
   /* ---- Departamentos: cada uno con su color ---- */
-  :root{ --dep-direccion:#1F9E8C; --dep-marketing:#E0679A; }
+  :root{ --dep-direccion:#1F9E8C; --dep-marketing:#E0679A; --dep-todos:#E8B93D; }
   .dep-direccion{ --dep:var(--dep-direccion); --dep-bg:rgba(31,158,140,.14); }
   .dep-marketing{ --dep:var(--dep-marketing); --dep-bg:rgba(224,103,154,.14); }
+  .dep-todos{ --dep:var(--dep-todos); --dep-bg:rgba(232,185,61,.14); }
   .dep-badge{
     font-family:var(--mono); font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
     color:var(--dep); background:var(--dep-bg); padding:3px 8px; border-radius:20px; white-space:nowrap;
@@ -279,7 +280,7 @@
         <button id="calNext">›</button>
       </div>
       <div class="cal-grid" id="calGrid"></div>
-      <div class="cal-leyenda"><span><span class="cal-mark"></span>Reunión</span><span><span class="cal-mark tarea"></span>Tarea (fecha límite)</span></div>
+      <div class="cal-leyenda"><span><span class="cal-mark"></span>Reunión</span><span><span class="cal-mark tarea"></span>Tarea (fecha límite)</span><span><span class="cal-mark dep-todos" style="--dep:var(--dep-todos)"></span>Para todos</span></div>
       <button class="btn-submit ghost" id="calHoyBtn" style="margin-top:14px;">Ir a hoy</button>
     </div>
 
@@ -360,12 +361,13 @@
 
   // Departamentos: todos ven todo, pero cada reunión/tarea lleva el suyo
   // y se pinta con su color. Marketing no ve dinero (ventas/compras).
-  const DEP_LABEL = { direccion: 'Dirección', marketing: 'Marketing' };
+  // 'todos' solo existe para reuniones: la reunión es para todo el mundo.
+  const DEP_LABEL = { direccion: 'Dirección', marketing: 'Marketing', todos: 'Todos' };
   const depDe = x => (x && x.departamento) || 'direccion';
   const depBadge = d => `<span class="dep-badge dep-${d}">${DEP_LABEL[d] || d}</span>`;
   const esDireccion = () => DEPARTAMENTO === 'direccion';
   let filtroDep = 'todos';
-  const pasaFiltro = x => filtroDep === 'todos' || depDe(x) === filtroDep;
+  const pasaFiltro = x => filtroDep === 'todos' || depDe(x) === filtroDep || depDe(x) === 'todos';
   document.getElementById('whoamiBtn').onclick = () => NexusAuth.signOut(sb);
 
   function actualizarBotonNotif(){
@@ -891,7 +893,7 @@
         <div class="field"><label>Fecha</label><input type="date" id="rFecha" value="${fechaPre || hoyLocalISO()}"></div>
         <div class="field"><label>Hora (opcional)</label><input type="time" id="rHora"></div>
       </div>
-      <div class="field"><label>Departamento</label>
+      <div class="field"><label>¿Para quién es? <small style="text-transform:none; letter-spacing:0;">(se les avisa)</small></label>
         <div class="chip-grid" id="rDepGrid">
           ${Object.keys(DEP_LABEL).map(d => `<div class="chip dep-${d} ${d === DEPARTAMENTO ? 'active' : ''}" data-val="${d}"><span class="dep-dot"></span>${DEP_LABEL[d]}</div>`).join('')}
         </div>
@@ -1038,7 +1040,7 @@
       const btn = document.getElementById('rGuardar');
       btn.disabled = true; btn.textContent = 'Guardando…';
       const { error } = await sb.from('reuniones').insert({
-        cliente_id, fecha, hora, resumen, acordado, departamento: rDepartamento,
+        cliente_id, fecha, hora, resumen, acordado, departamento: rDepartamento, creado_por_user_id: SOCIO_ID,
         producto_vendido: productoVendidoLabel, precio_vendido: precioVendido, venta_id: ventaId,
       });
       btn.disabled = false; btn.textContent = 'Guardar reunión';

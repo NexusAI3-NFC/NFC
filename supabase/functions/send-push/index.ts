@@ -1,8 +1,8 @@
 // =====================================================================
 // NEXUS · Edge Function `send-push`
 //
-// La llaman 3 Database Webhooks (INSERT/UPDATE en `tareas`, INSERT en
-// `ventas`) y 2 tareas de pg_cron (recordatorios por tiempo). Decide a
+// La llaman 4 Database Webhooks (INSERT/UPDATE en `tareas`, INSERT en
+// `ventas` y en `reuniones`) y 3 tareas de pg_cron (recordatorios). Decide a
 // quién avisar según lo que le llegue, y manda el push de verdad con
 // web-push, usando las claves VAPID guardadas como secrets.
 //
@@ -60,6 +60,18 @@ function asignadosDe(t: any): string[] {
   if (Array.isArray(t.asignados_user_ids) && t.asignados_user_ids.length) return t.asignados_user_ids;
   return t.asignado_a_user_id ? [t.asignado_a_user_id] : [];
 }
+
+// departamento 'todos' (solo reuniones) = todo el mundo.
+async function idsDelDepartamento(departamento: string): Promise<string[]> {
+  let q = sb.from("socios").select("user_id").not("user_id", "is", null);
+  if (departamento !== "todos") q = q.eq("departamento", departamento || "direccion");
+  const { data } = await q;
+  return (data || []).map((s) => s.user_id as string);
+}
+
+const DEP_LABEL: Record<string, string> = { direccion: "Dirección", marketing: "Marketing", todos: "Todos" };
+const fechaCorta = (f: string) =>
+  new Date(f + "T00:00:00").toLocaleDateString("es-ES", { day: "numeric", month: "short" });
 
 async function idsDeDireccion(): Promise<string[]> {
   const { data } = await sb.from("socios").select("user_id")
@@ -129,6 +141,18 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ---- Database Webhook: reunión nueva → su departamento ----
+    else if (payload.table === "reuniones" && payload.type === "INSERT") {
+      const r = payload.record;
+      const { data: cliente } = await sb.from("clientes_crm").select("nombre").eq("id", r.cliente_id).maybeSingle();
+      const ids = (await idsDelDepartamento(r.departamento)).filter((id) => id !== r.creado_por_user_id);
+      await enviarATodos(ids, {
+        title: `Reunión nueva · ${DEP_LABEL[r.departamento] || "Dirección"}`,
+        body: `${cliente?.nombre || "Cliente"} — ${fechaCorta(r.fecha)}${r.hora ? " a las " + String(r.hora).slice(0, 5) : ""}`,
+        url: "./agenda-clientes.html",
+      });
+    }
+
     // ---- Database Webhook: pedido nuevo de un cliente ----
     else if (payload.table === "ventas" && payload.type === "INSERT") {
       const v = payload.record;
@@ -162,6 +186,28 @@ Deno.serve(async (req) => {
           });
         }
         await sb.from("tareas").update({ aviso_limite_enviado: true }).eq("id", t.id);
+      }
+    }
+
+    // ---- pg_cron: reuniones de hoy, a cada departamento las suyas + las de todos ----
+    else if (payload.tipo === "recordatorio_reuniones_hoy") {
+      const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid" }).format(new Date());
+      const { data: reuniones } = await sb
+        .from("reuniones")
+        .select("hora, departamento, clientes_crm(nombre)")
+        .eq("fecha", hoy)
+        .order("hora", { ascending: true, nullsFirst: false });
+
+      for (const dep of ["direccion", "marketing"]) {
+        const lista = (reuniones || []).filter((r) => (r.departamento || "direccion") === dep || r.departamento === "todos");
+        if (!lista.length) continue;
+        await enviarATodos(await idsDelDepartamento(dep), {
+          title: `Hoy: ${lista.length} reunión${lista.length === 1 ? "" : "es"}`,
+          body: lista
+            .map((r) => `${r.hora ? String(r.hora).slice(0, 5) + " " : ""}${(r.clientes_crm as any)?.nombre || "Cliente"}`)
+            .join(" · "),
+          url: "./agenda-clientes.html",
+        });
       }
     }
 
