@@ -53,8 +53,11 @@ async function enviarATodos(userIds: string[], payload: Record<string, unknown>)
   }));
 }
 
-async function idsDeTodosLosSocios(): Promise<string[]> {
-  const { data } = await sb.from("socios").select("user_id").not("user_id", "is", null);
+// Solo Dirección: los avisos de pedidos/ventas no son para Marketing.
+async function idsDeDireccion(): Promise<string[]> {
+  const { data } = await sb.from("socios").select("user_id")
+    .not("user_id", "is", null)
+    .eq("departamento", "direccion");
   return (data || []).map((s) => s.user_id as string);
 }
 
@@ -95,7 +98,7 @@ Deno.serve(async (req) => {
         await enviarATodos([t.asignado_a_user_id], {
           title: "Tarea nueva",
           body: t.titulo || t.descripcion || "Tienes una tarea nueva",
-          url: "./index.html",
+          url: "./agenda-clientes.html",
         });
       }
     }
@@ -110,7 +113,7 @@ Deno.serve(async (req) => {
         await enviarATodos([t.creado_por_user_id], {
           title: pasoAHecha ? "Tarea completada" : "Tarea en progreso",
           body: `${t.titulo || t.descripcion || "Una tarea"}${t.asignado_a ? " — " + t.asignado_a : ""}`,
-          url: "./index.html",
+          url: "./agenda-clientes.html",
         });
       }
     }
@@ -119,7 +122,7 @@ Deno.serve(async (req) => {
     else if (payload.table === "ventas" && payload.type === "INSERT") {
       const v = payload.record;
       if (v.origen === "cliente") {
-        const ids = await idsDeTodosLosSocios();
+        const ids = await idsDeDireccion();
         await enviarATodos(ids, {
           title: "Pedido nuevo",
           body: `${v.cliente || "Un cliente"} ha hecho un pedido`,
@@ -144,7 +147,7 @@ Deno.serve(async (req) => {
           await enviarATodos([t.asignado_a_user_id], {
             title: "Fecha límite cerca",
             body: `${t.titulo || t.descripcion || "Una tarea"} — límite ${t.fecha_limite}`,
-            url: "./index.html",
+            url: "./agenda-clientes.html",
           });
         }
         await sb.from("tareas").update({ aviso_limite_enviado: true }).eq("id", t.id);
@@ -159,7 +162,7 @@ Deno.serve(async (req) => {
         .eq("entregado", false)
         .eq("origen", "cliente");
       if (count && count > 0) {
-        const ids = await idsDeTodosLosSocios();
+        const ids = await idsDeDireccion();
         await enviarATodos(ids, {
           title: "Pedidos pendientes",
           body: `Hay ${count} pedido${count === 1 ? "" : "s"} sin entregar`,

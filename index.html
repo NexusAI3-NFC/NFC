@@ -485,7 +485,7 @@
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   let SOCIO = null;
-  NexusAuth.init(sb);
+  NexusAuth.init(sb, { soloDireccion: true });
   document.getElementById('whoamiBtn').onclick = () => NexusAuth.signOut(sb);
 
   document.querySelectorAll('.tab').forEach(tab => {

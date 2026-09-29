@@ -42,9 +42,17 @@
     else localStorage.removeItem(REMEMBER_KEY);
   }
 
-  async function fetchNombre(sb, userId, fallbackEmail) {
-    const { data } = await sb.from('socios').select('nombre').eq('user_id', userId).maybeSingle();
-    return (data && data.nombre) || fallbackEmail;
+  async function fetchSocio(sb, userId, fallbackEmail) {
+    let { data, error } = await sb.from('socios').select('nombre, departamento').eq('user_id', userId).maybeSingle();
+    if (error) ({ data } = await sb.from('socios').select('nombre').eq('user_id', userId).maybeSingle());
+    // Con error (p.ej. la columna `departamento` aún no existe porque no
+    // se ha ejecutado migracion-departamentos.sql) se asume Dirección
+    // para no dejar fuera a los socios. Sin fila en `socios` = no es
+    // socio: se le trata como Marketing (solo Agenda).
+    return {
+      nombre: (data && data.nombre) || fallbackEmail,
+      departamento: error ? 'direccion' : ((data && data.departamento) || 'marketing'),
+    };
   }
 
   function loginOverlay(sb, onDone) {
@@ -129,17 +137,25 @@
     };
   }
 
-  window.NexusAuth.init = async function (sb) {
+  // opts.soloDireccion: la página es solo para Dirección (Control NFC).
+  // Si entra alguien de otro departamento (Marketing), se le manda a la
+  // Agenda. El bloqueo de verdad está en el RLS de la base de datos;
+  // esto solo evita que vea una página vacía.
+  window.NexusAuth.init = async function (sb, opts = {}) {
     const hash = window.location.hash || '';
     const search = window.location.search || '';
     const isInviteOrRecovery = /type=(invite|recovery)/.test(hash) || /type=(invite|recovery)/.test(search);
 
     const finish = async (user) => {
-      const nombre = await fetchNombre(sb, user.id, user.email);
+      const { nombre, departamento } = await fetchSocio(sb, user.id, user.email);
+      if (opts.soloDireccion && departamento !== 'direccion') {
+        window.location.replace('agenda-clientes.html');
+        return;
+      }
       if (window.history && history.replaceState) {
         history.replaceState(null, '', window.location.pathname + window.location.search.replace(/([?&])(type|access_token|refresh_token|expires_in|token_type)=[^&]*/g, ''));
       }
-      resolveReady({ user, nombre });
+      resolveReady({ user, nombre, departamento });
     };
 
     const { data: { session } } = await sb.auth.getSession();

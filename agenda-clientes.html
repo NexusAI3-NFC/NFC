@@ -69,10 +69,31 @@
   .cal-cell.hoy{ border-color:var(--rust); }
   .cal-cell.con-reunion{ border-color:var(--teal); background:rgba(31,158,140,0.10); }
   .cal-num{ font-family:var(--mono); font-weight:700; font-size:13px; }
-  .cal-dot-count{
-    position:absolute; bottom:5px; font-family:var(--mono); font-size:9px; color:var(--teal);
-    background:rgba(31,158,140,.18); padding:1px 6px; border-radius:8px;
+  .cal-cell.con-eventos{ background:var(--ink-softer); }
+  .cal-marks{ position:absolute; bottom:5px; display:flex; gap:3px; align-items:center; }
+  .cal-mark{ width:6px; height:6px; border-radius:50%; background:var(--dep); }
+  .cal-mark.tarea{ border-radius:1.5px; }
+  .cal-mark.hecha{ opacity:.35; }
+  .cal-more{ font-family:var(--mono); font-size:8px; color:var(--slate); line-height:1; }
+
+  /* ---- Departamentos: cada uno con su color ---- */
+  :root{ --dep-direccion:#1F9E8C; --dep-marketing:#E0679A; }
+  .dep-direccion{ --dep:var(--dep-direccion); --dep-bg:rgba(31,158,140,.14); }
+  .dep-marketing{ --dep:var(--dep-marketing); --dep-bg:rgba(224,103,154,.14); }
+  .dep-badge{
+    font-family:var(--mono); font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+    color:var(--dep); background:var(--dep-bg); padding:3px 8px; border-radius:20px; white-space:nowrap;
   }
+  .dep-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--dep); margin-right:6px; vertical-align:1px; }
+  .cal-filtros{ display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
+  .cal-filtro{
+    font-size:12.5px; font-weight:600; padding:7px 12px; border-radius:20px;
+    background:var(--ink-soft); border:1px solid var(--line); color:var(--paper-dim);
+  }
+  .cal-filtro.active{ border-color:var(--dep, var(--rust)); color:var(--paper); background:var(--dep-bg, rgba(198,112,60,.12)); }
+  .cal-leyenda{ display:flex; gap:14px; font-size:11.5px; color:var(--slate); margin-top:6px; }
+  .cal-leyenda .cal-mark{ display:inline-block; position:static; margin-right:5px; --dep:var(--slate); }
+  .dia-sub{ font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin:16px 0 8px; }
 
   /* ---- Clientes ---- */
   .clientes-toolbar{ display:flex; gap:10px; margin-bottom:16px; }
@@ -106,6 +127,7 @@
     background:var(--ink-soft); border:1px solid var(--line); border-radius:14px;
     padding:14px 16px; margin-bottom:10px;
   }
+  .tarea-row[class*="dep-"]{ background:var(--dep-bg); border:1px solid color-mix(in srgb, var(--dep) 35%, transparent); }
   .tarea-row.hecha{ opacity:.5; }
   .tarea-row.atrasada{ border-color:var(--bad); background:linear-gradient(135deg, rgba(217,83,79,0.10), var(--ink-soft)); }
   .tarea-desc{ font-size:14.5px; font-weight:600; }
@@ -185,7 +207,11 @@
   .reunion-item{
     background:var(--ink-softer); border-radius:14px; padding:14px 16px; margin-bottom:10px;
   }
-  .reunion-fecha{ font-family:var(--mono); font-weight:700; font-size:13px; color:var(--teal); margin-bottom:6px; }
+  .reunion-item[class*="dep-"]{ background:var(--dep-bg); border:1px solid color-mix(in srgb, var(--dep) 35%, transparent); }
+  .reunion-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:6px; }
+  .reunion-head .reunion-fecha{ margin-bottom:0; }
+  .reunion-fecha{ font-family:var(--mono); font-weight:700; font-size:13px; color:var(--dep, var(--teal)); margin-bottom:6px; }
+  .reunion-item.hecha .reunion-fecha{ text-decoration:line-through; opacity:.6; }
   .reunion-txt{ font-size:13.5px; color:var(--paper-dim); line-height:1.5; margin-top:4px; }
   .reunion-txt b{ color:var(--paper); font-weight:600; }
   .btn-cancelar-reunion{
@@ -226,7 +252,7 @@
     Agenda Clientes
   </div>
   <div style="display:flex; gap:8px;">
-    <a class="whoami" href="index.html" title="Control NFC" style="text-decoration:none;">🏠</a>
+    <a class="whoami" href="index.html" id="homeLink" title="Control NFC" style="text-decoration:none; display:none;">🏠</a>
     <button class="whoami" id="notifBtn" title="Avisos de tareas">🔔</button>
     <button class="whoami" id="whoamiBtn">👤 <span id="whoamiName">—</span></button>
   </div>
@@ -242,12 +268,18 @@
 
   <section class="view active" id="view-calendario">
     <div>
+      <div class="cal-filtros" id="calFiltros">
+        <button class="cal-filtro active" data-dep="todos">Todos</button>
+        <button class="cal-filtro dep-direccion" data-dep="direccion"><span class="dep-dot"></span>Dirección</button>
+        <button class="cal-filtro dep-marketing" data-dep="marketing"><span class="dep-dot"></span>Marketing</button>
+      </div>
       <div class="cal-header">
         <button id="calPrev">‹</button>
         <div class="cal-label" id="calLabel">—</div>
         <button id="calNext">›</button>
       </div>
       <div class="cal-grid" id="calGrid"></div>
+      <div class="cal-leyenda"><span><span class="cal-mark"></span>Reunión</span><span><span class="cal-mark tarea"></span>Tarea (fecha límite)</span></div>
       <button class="btn-submit ghost" id="calHoyBtn" style="margin-top:14px;">Ir a hoy</button>
     </div>
 
@@ -255,9 +287,13 @@
       <div class="detail-panel">
         <button class="detail-close" id="diaClose">✕</button>
         <h3 id="diaTitulo">Elige un día</h3>
-        <p id="diaVacio" class="empty" style="padding:20px 0;">Toca un día del calendario para ver o añadir reuniones.</p>
+        <p id="diaVacio" class="empty" style="padding:20px 0;">Toca un día del calendario para ver sus reuniones y tareas.</p>
         <div id="diaReuniones"></div>
-        <button class="btn-submit teal" id="diaNuevaReunionBtn" style="display:none; margin-top:10px;">+ Reunión este día</button>
+        <div id="diaTareas"></div>
+        <div class="detail-actions" id="diaAcciones" style="display:none; margin-top:10px;">
+          <button class="btn-submit teal" id="diaNuevaReunionBtn">+ Reunión</button>
+          <button class="btn-submit ghost" id="diaNuevaTareaBtn">+ Tarea</button>
+        </div>
       </div>
     </div>
   </section>
@@ -319,7 +355,17 @@
   };
 
   let SOCIO = null;
+  let DEPARTAMENTO = 'direccion';
   NexusAuth.init(sb);
+
+  // Departamentos: todos ven todo, pero cada reunión/tarea lleva el suyo
+  // y se pinta con su color. Marketing no ve dinero (ventas/compras).
+  const DEP_LABEL = { direccion: 'Dirección', marketing: 'Marketing' };
+  const depDe = x => (x && x.departamento) || 'direccion';
+  const depBadge = d => `<span class="dep-badge dep-${d}">${DEP_LABEL[d] || d}</span>`;
+  const esDireccion = () => DEPARTAMENTO === 'direccion';
+  let filtroDep = 'todos';
+  const pasaFiltro = x => filtroDep === 'todos' || depDe(x) === filtroDep;
   document.getElementById('whoamiBtn').onclick = () => NexusAuth.signOut(sb);
 
   function actualizarBotonNotif(){
@@ -380,16 +426,16 @@
   let PRODUCTOS = [];
   let TARIFAS_REDES = [];
   let TAREAS = [];
-  let SOCIOS_LIST = []; // [{user_id, nombre}]
+  let SOCIOS_LIST = []; // [{user_id, nombre, departamento}]
   let SOCIO_ID = null;
   let tareaAsignadoSel = null;
 
   async function cargarSocios(){
-    const { data } = await sb.from('socios').select('user_id, nombre').order('nombre');
+    const { data } = await sb.from('socios').select('user_id, nombre, departamento').order('departamento').order('nombre');
     SOCIOS_LIST = (data || []).filter(s => s.user_id);
     const grid = document.getElementById('tareaAsignadoGrid');
     if (!grid) return;
-    grid.innerHTML = SOCIOS_LIST.map(s => `<div class="chip" data-val="${s.user_id}">${s.nombre}</div>`).join('');
+    grid.innerHTML = SOCIOS_LIST.map(s => `<div class="chip dep-${depDe(s)}" data-val="${s.user_id}"><span class="dep-dot"></span>${s.nombre}</div>`).join('');
     grid.querySelectorAll('.chip').forEach(chip => {
       chip.addEventListener('click', () => {
         grid.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
@@ -439,15 +485,16 @@
       let html = '';
       grupos.forEach((tareas, persona) => {
         const pendientes = tareas.filter(t => !t.hecha).length;
-        html += `<div class="tarea-grupo-title">${persona} · ${pendientes} pendiente${pendientes === 1 ? '' : 's'}</div>`;
+        html += `<div class="tarea-grupo-title dep-${depDe(tareas[0])}"><span class="dep-dot"></span>${persona} · ${pendientes} pendiente${pendientes === 1 ? '' : 's'}</div>`;
         html += tareas.map(t => {
           const atrasada = !t.hecha && t.fecha_limite && t.fecha_limite < hoyStr;
           return `
-          <div class="tarea-row ${t.hecha ? 'hecha' : ''} ${atrasada ? 'atrasada' : ''}">
+          <div class="tarea-row dep-${depDe(t)} ${t.hecha ? 'hecha' : ''} ${atrasada ? 'atrasada' : ''}">
             <div>
               <div class="tarea-desc">${t.titulo || t.descripcion || ''}</div>
               ${t.titulo && t.descripcion ? `<div class="tarea-desc-sub">${t.descripcion}</div>` : ''}
               <div class="tarea-meta">
+                ${depBadge(depDe(t))}
                 ${!t.hecha ? `<select class="tarea-estado ${t.estado}" data-id="${t.id}">
                   <option value="pendiente" ${t.estado === 'pendiente' ? 'selected' : ''}>Pendiente</option>
                   <option value="en_progreso" ${t.estado === 'en_progreso' ? 'selected' : ''}>En progreso</option>
@@ -469,14 +516,7 @@
     }
 
     list.querySelectorAll('.tarea-check').forEach(cb => {
-      cb.addEventListener('change', async () => {
-        const hecha = cb.checked;
-        const { error } = await sb.from('tareas')
-          .update({ hecha, fecha_hecha: hecha ? new Date().toISOString() : null })
-          .eq('id', cb.dataset.id);
-        if (error){ alert('Error: ' + error.message); cb.checked = !hecha; return; }
-        cargarTodo();
-      });
+      cb.addEventListener('change', () => marcarTareaHecha(cb));
     });
     list.querySelectorAll('.tarea-del').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -493,6 +533,15 @@
         cargarTodo();
       });
     });
+  }
+
+  async function marcarTareaHecha(cb){
+    const hecha = cb.checked;
+    const { error } = await sb.from('tareas')
+      .update({ hecha, fecha_hecha: hecha ? new Date().toISOString() : null })
+      .eq('id', cb.dataset.id);
+    if (error){ alert('Error: ' + error.message); cb.checked = !hecha; return; }
+    cargarTodo();
   }
 
   document.getElementById('tareaSubmit').addEventListener('click', async () => {
@@ -512,6 +561,7 @@
       asignado_a: asignadoSocio.nombre, asignado_a_user_id: asignadoSocio.user_id,
       creado_por: SOCIO, creado_por_user_id: SOCIO_ID,
       fecha_limite: fechaLimite, estado: tareaEstadoSel,
+      departamento: depDe(asignadoSocio),
     });
     btn.disabled = false; btn.textContent = '+ Añadir tarea';
     if (error){ alert('Error al guardar: ' + error.message); return; }
@@ -543,21 +593,30 @@
     const diasEnMes = new Date(calYear, calMonth + 1, 0).getDate();
     const offset = (primerDia.getDay() + 6) % 7; // lunes=0
 
+    // Cada día: sus reuniones (●) y las tareas que vencen ese día (■),
+    // cada marca con el color de su departamento.
     const porDia = new Map();
-    REUNIONES.forEach(r => {
-      if (!porDia.has(r.fecha)) porDia.set(r.fecha, []);
-      porDia.get(r.fecha).push(r);
-    });
+    const añadir = (fecha, marca) => {
+      if (!porDia.has(fecha)) porDia.set(fecha, []);
+      porDia.get(fecha).push(marca);
+    };
+    REUNIONES.filter(pasaFiltro).forEach(r => añadir(r.fecha, { tipo: 'reunion', dep: depDe(r) }));
+    TAREAS.filter(t => t.fecha_limite && pasaFiltro(t))
+      .forEach(t => añadir(t.fecha_limite, { tipo: 'tarea', dep: depDe(t), hecha: t.hecha }));
+    const MAX_MARCAS = 4;
 
     const hoyStr = hoyLocalISO();
     let html = DIAS_SEMANA.map(d => `<div class="cal-dow">${d}</div>`).join('');
     for (let i = 0; i < offset; i++) html += `<div class="cal-cell empty"></div>`;
     for (let d = 1; d <= diasEnMes; d++){
       const fechaStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const reus = porDia.get(fechaStr) || [];
-      html += `<div class="cal-cell ${fechaStr === hoyStr ? 'hoy' : ''} ${reus.length ? 'con-reunion' : ''}" data-fecha="${fechaStr}">
+      const marcas = porDia.get(fechaStr) || [];
+      html += `<div class="cal-cell ${fechaStr === hoyStr ? 'hoy' : ''} ${marcas.length ? 'con-eventos' : ''}" data-fecha="${fechaStr}">
         <div class="cal-num">${d}</div>
-        ${reus.length ? `<div class="cal-dot-count">${reus.length}</div>` : ''}
+        ${marcas.length ? `<div class="cal-marks">
+          ${marcas.slice(0, MAX_MARCAS).map(m => `<span class="cal-mark dep-${m.dep} ${m.tipo === 'tarea' ? 'tarea' : ''} ${m.hecha ? 'hecha' : ''}"></span>`).join('')}
+          ${marcas.length > MAX_MARCAS ? `<span class="cal-more">+${marcas.length - MAX_MARCAS}</span>` : ''}
+        </div>` : ''}
       </div>`;
     }
     const calGrid = document.getElementById('calGrid');
@@ -588,24 +647,46 @@
     renderCalendar();
   });
   document.getElementById('calHoyBtn').addEventListener('click', () => { initCalendar(); renderCalendar(); });
+  document.querySelectorAll('#calFiltros .cal-filtro').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#calFiltros .cal-filtro').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      filtroDep = btn.dataset.dep;
+      renderCalendar();
+      if (diaAbierto) abrirDia(diaAbierto, false);
+    });
+  });
 
   function abrirDia(fechaStr, abrirPanel = true){
     diaAbierto = fechaStr;
-    const reus = REUNIONES.filter(r => r.fecha === fechaStr);
+    const reus = REUNIONES.filter(r => r.fecha === fechaStr && pasaFiltro(r))
+      .sort((a, b) => (a.hora || '99').localeCompare(b.hora || '99'));
+    const tareasDia = TAREAS.filter(t => t.fecha_limite === fechaStr && pasaFiltro(t));
     document.getElementById('diaTitulo').textContent = fechaBonita(fechaStr);
-    document.getElementById('diaVacio').style.display = reus.length ? 'none' : 'block';
-    document.getElementById('diaNuevaReunionBtn').style.display = 'block';
-    document.getElementById('diaReuniones').innerHTML = reus.map(r => `
-      <div class="reunion-item">
-        <div class="reunion-fecha">${r.hora ? r.hora.slice(0,5) + ' · ' : ''}${r.clientes_crm?.nombre || '—'}</div>
-        ${r.producto_vendido ? `<div class="reunion-txt">💰 <b>Vendido:</b> ${r.producto_vendido} — ${money(r.precio_vendido)}</div>` : ''}
-        ${r.resumen ? `<div class="reunion-txt"><b>Resumen:</b> ${r.resumen}</div>` : ''}
-        ${r.acordado ? `<div class="reunion-txt"><b>Acordado:</b> ${r.acordado}</div>` : ''}
-        <button class="btn-cancelar-reunion" data-id="${r.id}">Cancelar reunión</button>
-      </div>
-    `).join('');
+    document.getElementById('diaVacio').style.display = (reus.length || tareasDia.length) ? 'none' : 'block';
+    document.getElementById('diaAcciones').style.display = 'flex';
+    document.getElementById('diaReuniones').innerHTML = reus.length
+      ? `<div class="dia-sub">Reuniones</div>` + reus.map(r => reunionItemHTML(r, `${r.hora ? r.hora.slice(0,5) + ' · ' : ''}${r.clientes_crm?.nombre || '—'}`)).join('')
+      : '';
+    document.getElementById('diaTareas').innerHTML = tareasDia.length
+      ? `<div class="dia-sub">Tareas que vencen este día</div>` + tareasDia.map(t => `
+        <div class="reunion-item dep-${depDe(t)} ${t.hecha ? 'hecha' : ''}">
+          <div class="reunion-head">
+            <div class="reunion-fecha">${t.titulo || t.descripcion || ''}</div>
+            <div style="display:flex; align-items:center; gap:10px;">
+              ${depBadge(depDe(t))}
+              <input type="checkbox" class="tarea-check" data-id="${t.id}" ${t.hecha ? 'checked' : ''} aria-label="Hecha">
+            </div>
+          </div>
+          ${t.titulo && t.descripcion ? `<div class="reunion-txt">${t.descripcion}</div>` : ''}
+          <div class="reunion-txt"><b>Para:</b> ${t.asignado_a}${t.hecha ? ' · hecha' : (t.estado === 'en_progreso' ? ' · en progreso' : ' · pendiente')}</div>
+        </div>`).join('')
+      : '';
     document.querySelectorAll('#diaReuniones .btn-cancelar-reunion').forEach(btn => {
       btn.addEventListener('click', () => cancelarReunion(btn.dataset.id));
+    });
+    document.querySelectorAll('#diaTareas .tarea-check').forEach(cb => {
+      cb.addEventListener('change', () => marcarTareaHecha(cb));
     });
     if (abrirPanel) document.getElementById('diaWrap').classList.add('is-open');
   }
@@ -613,6 +694,28 @@
     document.getElementById('diaWrap').classList.remove('is-open');
   });
   document.getElementById('diaNuevaReunionBtn').addEventListener('click', () => abrirFormReunion(null, diaAbierto));
+  document.getElementById('diaNuevaTareaBtn').addEventListener('click', () => {
+    document.getElementById('diaWrap').classList.remove('is-open');
+    document.querySelector('.viewtab[data-view="tareas"]').click();
+    document.getElementById('tareaFechaLimite').value = diaAbierto;
+    document.getElementById('tareaTitulo').focus();
+  });
+
+  // Una reunión (en el panel del día o en la ficha del cliente), con el
+  // color de su departamento. Lo vendido (dinero) solo lo ve Dirección.
+  function reunionItemHTML(r, titulo){
+    return `
+      <div class="reunion-item dep-${depDe(r)}">
+        <div class="reunion-head">
+          <div class="reunion-fecha">${titulo}</div>
+          ${depBadge(depDe(r))}
+        </div>
+        ${r.producto_vendido && esDireccion() ? `<div class="reunion-txt">💰 <b>Vendido:</b> ${r.producto_vendido} — ${money(r.precio_vendido)}</div>` : ''}
+        ${r.resumen ? `<div class="reunion-txt"><b>Resumen:</b> ${r.resumen}</div>` : ''}
+        ${r.acordado ? `<div class="reunion-txt"><b>Acordado:</b> ${r.acordado}</div>` : ''}
+        <button class="btn-cancelar-reunion" data-id="${r.id}">Cancelar reunión</button>
+      </div>`;
+  }
 
   // =====================================================================
   // CLIENTES — lista, búsqueda, detalle
@@ -669,19 +772,11 @@
         <button class="btn-submit ghost" id="btnFichaPDF">📄 Generar ficha (PDF)</button>
         <button class="btn-submit ghost" id="btnEliminarCliente" style="color:var(--bad); border-color:var(--bad);">🗑️ Eliminar cliente</button>
       </div>
-      <div class="sec-title" style="font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin:20px 0 10px;">Compras</div>
-      <div id="clienteComprasList"><div class="empty">Cargando…</div></div>
+      ${esDireccion() ? `<div class="sec-title" style="font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin:20px 0 10px;">Compras</div>
+      <div id="clienteComprasList"><div class="empty">Cargando…</div></div>` : ''}
       <div class="sec-title" style="font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin:20px 0 10px;">Historial de reuniones</div>
       <div id="clienteReunionesList">
-        ${!reus.length ? '<div class="empty">Sin reuniones registradas todavía.</div>' : reus.map(r => `
-          <div class="reunion-item">
-            <div class="reunion-fecha">${fechaBonita(r.fecha)}${r.hora ? ' · ' + r.hora.slice(0,5) : ''}</div>
-            ${r.producto_vendido ? `<div class="reunion-txt">💰 <b>Vendido:</b> ${r.producto_vendido} — ${money(r.precio_vendido)}</div>` : ''}
-            ${r.resumen ? `<div class="reunion-txt"><b>Resumen:</b> ${r.resumen}</div>` : ''}
-            ${r.acordado ? `<div class="reunion-txt"><b>Acordado:</b> ${r.acordado}</div>` : ''}
-            <button class="btn-cancelar-reunion" data-id="${r.id}">Cancelar reunión</button>
-          </div>
-        `).join('')}
+        ${!reus.length ? '<div class="empty">Sin reuniones registradas todavía.</div>' : reus.map(r => reunionItemHTML(r, `${fechaBonita(r.fecha)}${r.hora ? ' · ' + r.hora.slice(0,5) : ''}`)).join('')}
       </div>
     `;
     document.getElementById('btnNuevaReunionCliente').addEventListener('click', () => abrirFormReunion(clienteId, null));
@@ -695,6 +790,8 @@
     if (abrirPanel) document.getElementById('clienteWrap').classList.add('is-open');
     renderClientesList();
 
+    comprasClienteActual = [];
+    if (!esDireccion()) return;
     const { data: compras } = await sb.from('ventas')
       .select('*, productos(nombre)')
       .eq('cliente_id', clienteId)
@@ -779,8 +876,13 @@
         <div class="field"><label>Fecha</label><input type="date" id="rFecha" value="${fechaPre || hoyLocalISO()}"></div>
         <div class="field"><label>Hora (opcional)</label><input type="time" id="rHora"></div>
       </div>
+      <div class="field"><label>Departamento</label>
+        <div class="chip-grid" id="rDepGrid">
+          ${Object.keys(DEP_LABEL).map(d => `<div class="chip dep-${d} ${d === DEPARTAMENTO ? 'active' : ''}" data-val="${d}"><span class="dep-dot"></span>${DEP_LABEL[d]}</div>`).join('')}
+        </div>
+      </div>
 
-      <div class="form-section">
+      <div class="form-section" style="${esDireccion() ? '' : 'display:none;'}">
         <div class="form-section-title">💰 ¿Qué se ha vendido? <small>(opcional)</small></div>
         <div class="chip-grid" id="rProductoGrid"></div>
         <div class="field" id="rRedesField" style="display:none;">
@@ -807,6 +909,15 @@
 
     let rProductoId = null;
     let rRedesVideos = null;
+    let rDepartamento = DEPARTAMENTO;
+
+    document.querySelectorAll('#rDepGrid .chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('#rDepGrid .chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        rDepartamento = chip.dataset.val;
+      });
+    });
 
     const gridEl = document.getElementById('rProductoGrid');
     gridEl.innerHTML = '<div class="chip active" data-id="">Nada</div>'
@@ -912,7 +1023,7 @@
       const btn = document.getElementById('rGuardar');
       btn.disabled = true; btn.textContent = 'Guardando…';
       const { error } = await sb.from('reuniones').insert({
-        cliente_id, fecha, hora, resumen, acordado,
+        cliente_id, fecha, hora, resumen, acordado, departamento: rDepartamento,
         producto_vendido: productoVendidoLabel, precio_vendido: precioVendido, venta_id: ventaId,
       });
       btn.disabled = false; btn.textContent = 'Guardar reunión';
@@ -1095,43 +1206,45 @@
       y += boxHeight + 10;
     }
 
-    // ---- Compras, como tabla de factura con líneas finas ----
-    sectionLabel('Compras');
-    if (!comprasCliente || !comprasCliente.length){
-      paragraph(null, 'Sin compras registradas todavía.', { gap: 8 });
-    } else {
-      const colFecha = margin, colProducto = margin + 32, colPrecio = pageWidth - margin;
-      ensureSpace(9);
-      text('FECHA', colFecha, 8, { bold: true, size: 7.5, color: PDF_SLATE });
-      text('PRODUCTO', colProducto, 8, { bold: true, size: 7.5, color: PDF_SLATE });
-      text('IMPORTE', colPrecio, 8, { bold: true, size: 7.5, color: PDF_SLATE, align: 'right' });
-      y += 4;
-      doc.setDrawColor(...PDF_INK); doc.setLineWidth(0.35);
-      doc.line(margin, y, pageWidth - margin, y);
-      y += 7;
-      comprasCliente.forEach(v => {
+    // ---- Compras, como tabla de factura con líneas finas (solo Dirección) ----
+    if (esDireccion()){
+      sectionLabel('Compras');
+      if (!comprasCliente || !comprasCliente.length){
+        paragraph(null, 'Sin compras registradas todavía.', { gap: 8 });
+      } else {
+        const colFecha = margin, colProducto = margin + 32, colPrecio = pageWidth - margin;
         ensureSpace(9);
-        text(fechaCorta(v.fecha || (v.created_at || '').slice(0,10)), colFecha, 10, { size: 9.5 });
-        text(v.productos?.nombre || 'Producto', colProducto, 10, { size: 9.5 });
-        text(money(v.precio_venta), colPrecio, 10, { size: 9.5, align: 'right' });
-        y += 5;
-        doc.setDrawColor(...PDF_LINE); doc.setLineWidth(0.25);
+        text('FECHA', colFecha, 8, { bold: true, size: 7.5, color: PDF_SLATE });
+        text('PRODUCTO', colProducto, 8, { bold: true, size: 7.5, color: PDF_SLATE });
+        text('IMPORTE', colPrecio, 8, { bold: true, size: 7.5, color: PDF_SLATE, align: 'right' });
+        y += 4;
+        doc.setDrawColor(...PDF_INK); doc.setLineWidth(0.35);
         doc.line(margin, y, pageWidth - margin, y);
-        y += 6;
-      });
+        y += 7;
+        comprasCliente.forEach(v => {
+          ensureSpace(9);
+          text(fechaCorta(v.fecha || (v.created_at || '').slice(0,10)), colFecha, 10, { size: 9.5 });
+          text(v.productos?.nombre || 'Producto', colProducto, 10, { size: 9.5 });
+          text(money(v.precio_venta), colPrecio, 10, { size: 9.5, align: 'right' });
+          y += 5;
+          doc.setDrawColor(...PDF_LINE); doc.setLineWidth(0.25);
+          doc.line(margin, y, pageWidth - margin, y);
+          y += 6;
+        });
 
-      const total = comprasCliente.reduce((sum, v) => sum + Number(v.precio_venta || 0), 0);
-      const totalBoxW = 62, totalBoxH = 12;
-      ensureSpace(totalBoxH + 6);
-      const tbX = pageWidth - margin - totalBoxW, tbY = y + 2;
-      doc.setFillColor(...PDF_PAPER);
-      doc.rect(tbX, tbY, totalBoxW, totalBoxH, 'F');
-      doc.setDrawColor(...PDF_LINE); doc.setLineWidth(0.35);
-      doc.rect(tbX, tbY, totalBoxW, totalBoxH, 'S');
-      const tMidY = tbY + totalBoxH / 2 + 1.5;
-      text('TOTAL', tbX + 5, 9, { bold: true, size: 9, color: PDF_INK, atY: tMidY });
-      text(money(total), pageWidth - margin - 5, 10.5, { bold: true, size: 10.5, color: PDF_INK, align: 'right', atY: tMidY });
-      y = tbY + totalBoxH + 10;
+        const total = comprasCliente.reduce((sum, v) => sum + Number(v.precio_venta || 0), 0);
+        const totalBoxW = 62, totalBoxH = 12;
+        ensureSpace(totalBoxH + 6);
+        const tbX = pageWidth - margin - totalBoxW, tbY = y + 2;
+        doc.setFillColor(...PDF_PAPER);
+        doc.rect(tbX, tbY, totalBoxW, totalBoxH, 'F');
+        doc.setDrawColor(...PDF_LINE); doc.setLineWidth(0.35);
+        doc.rect(tbX, tbY, totalBoxW, totalBoxH, 'S');
+        const tMidY = tbY + totalBoxH / 2 + 1.5;
+        text('TOTAL', tbX + 5, 9, { bold: true, size: 9, color: PDF_INK, atY: tMidY });
+        text(money(total), pageWidth - margin - 5, 10.5, { bold: true, size: 10.5, color: PDF_INK, align: 'right', atY: tMidY });
+        y = tbY + totalBoxH + 10;
+      }
     }
 
     // ---- Historial de reuniones ----
@@ -1146,7 +1259,7 @@
         doc.circle(margin + 1, y - 1.5, 1.3, 'S');
         text(`${fechaBonita(r.fecha)}${r.hora ? ' · ' + r.hora.slice(0,5) : ''}`, margin + 6, 11, { bold: true, size: 10.5, color: PDF_INK });
         y += 6;
-        if (r.producto_vendido) paragraph('Vendido', `${r.producto_vendido} — ${money(r.precio_vendido)}`, { gap: 2 });
+        if (r.producto_vendido && esDireccion()) paragraph('Vendido', `${r.producto_vendido} — ${money(r.precio_vendido)}`, { gap: 2 });
         if (r.resumen) paragraph('Resumen', r.resumen, { gap: 2 });
         if (r.acordado) paragraph('Acordado', r.acordado, { gap: 2 });
         y += 4;
@@ -1172,9 +1285,11 @@
       .subscribe();
   }
 
-  NexusAuth.ready.then(({ user, nombre }) => {
+  NexusAuth.ready.then(({ user, nombre, departamento }) => {
     SOCIO = nombre;
     SOCIO_ID = user.id;
+    DEPARTAMENTO = departamento;
+    if (esDireccion()) document.getElementById('homeLink').style.display = '';
     document.getElementById('whoamiName').textContent = nombre;
     initCalendar();
     cargarSocios();
