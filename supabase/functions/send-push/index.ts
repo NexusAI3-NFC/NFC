@@ -144,11 +144,14 @@ Deno.serve(async (req) => {
     // ---- Database Webhook: reunión nueva → su departamento ----
     else if (payload.table === "reuniones" && payload.type === "INSERT") {
       const r = payload.record;
-      const { data: cliente } = await sb.from("clientes_crm").select("nombre").eq("id", r.cliente_id).maybeSingle();
+      const { data: cliente } = r.cliente_id
+        ? await sb.from("clientes_crm").select("nombre").eq("id", r.cliente_id).maybeSingle()
+        : { data: null };
+      const nombre = cliente?.nombre || r.titulo || "Reunión de equipo";
       const ids = (await idsDelDepartamento(r.departamento)).filter((id) => id !== r.creado_por_user_id);
       await enviarATodos(ids, {
         title: `Reunión nueva · ${DEP_LABEL[r.departamento] || "Dirección"}`,
-        body: `${cliente?.nombre || "Cliente"} — ${fechaCorta(r.fecha)}${r.hora ? " a las " + String(r.hora).slice(0, 5) : ""}`,
+        body: `${nombre} — ${fechaCorta(r.fecha)}${r.hora ? " a las " + String(r.hora).slice(0, 5) : ""}`,
         url: "./agenda-clientes.html",
       });
     }
@@ -194,7 +197,7 @@ Deno.serve(async (req) => {
       const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid" }).format(new Date());
       const { data: reuniones } = await sb
         .from("reuniones")
-        .select("hora, departamento, clientes_crm(nombre)")
+        .select("hora, titulo, departamento, clientes_crm(nombre)")
         .eq("fecha", hoy)
         .order("hora", { ascending: true, nullsFirst: false });
 
@@ -204,7 +207,7 @@ Deno.serve(async (req) => {
         await enviarATodos(await idsDelDepartamento(dep), {
           title: `Hoy: ${lista.length} reunión${lista.length === 1 ? "" : "es"}`,
           body: lista
-            .map((r) => `${r.hora ? String(r.hora).slice(0, 5) + " " : ""}${(r.clientes_crm as any)?.nombre || "Cliente"}`)
+            .map((r) => `${r.hora ? String(r.hora).slice(0, 5) + " " : ""}${(r.clientes_crm as any)?.nombre || r.titulo || "Reunión de equipo"}`)
             .join(" · "),
           url: "./agenda-clientes.html",
         });

@@ -292,7 +292,8 @@
         <div id="diaReuniones"></div>
         <div id="diaTareas"></div>
         <div class="detail-actions" id="diaAcciones" style="display:none; margin-top:10px;">
-          <button class="btn-submit teal" id="diaNuevaReunionBtn">+ Reunión</button>
+          <button class="btn-submit teal" id="diaNuevaReunionBtn">+ Reunión con cliente</button>
+          <button class="btn-submit ghost" id="diaNuevaReunionEquipoBtn">+ Reunión de equipo</button>
           <button class="btn-submit ghost" id="diaNuevaTareaBtn">+ Tarea</button>
         </div>
       </div>
@@ -683,7 +684,7 @@
     document.getElementById('diaVacio').style.display = (reus.length || tareasDia.length) ? 'none' : 'block';
     document.getElementById('diaAcciones').style.display = 'flex';
     document.getElementById('diaReuniones').innerHTML = reus.length
-      ? `<div class="dia-sub">Reuniones</div>` + reus.map(r => reunionItemHTML(r, `${r.hora ? r.hora.slice(0,5) + ' · ' : ''}${r.clientes_crm?.nombre || '—'}`)).join('')
+      ? `<div class="dia-sub">Reuniones</div>` + reus.map(r => reunionItemHTML(r, `${r.hora ? r.hora.slice(0,5) + ' · ' : ''}${tituloReunion(r)}`)).join('')
       : '';
     document.getElementById('diaTareas').innerHTML = tareasDia.length
       ? `<div class="dia-sub">Tareas que vencen este día</div>` + tareasDia.map(t => `
@@ -711,6 +712,7 @@
     document.getElementById('diaWrap').classList.remove('is-open');
   });
   document.getElementById('diaNuevaReunionBtn').addEventListener('click', () => abrirFormReunion(null, diaAbierto));
+  document.getElementById('diaNuevaReunionEquipoBtn').addEventListener('click', () => abrirFormReunion(null, diaAbierto, { equipo: true }));
   document.getElementById('diaNuevaTareaBtn').addEventListener('click', () => {
     document.getElementById('diaWrap').classList.remove('is-open');
     document.querySelector('.viewtab[data-view="tareas"]').click();
@@ -880,26 +882,33 @@
   // =====================================================================
   // REUNIONES — formulario (desde el calendario o desde la ficha de cliente)
   // =====================================================================
-  function abrirFormReunion(clienteIdPre, fechaPre){
-    if (!CLIENTES.length){
+  // Reunión de equipo: sin cliente, con un título propio.
+  const tituloReunion = r => r.clientes_crm?.nombre || (r.titulo ? '👥 ' + r.titulo : '👥 Reunión de equipo');
+
+  // opts.equipo: reunión interna, sin cliente ni venta.
+  function abrirFormReunion(clienteIdPre, fechaPre, { equipo = false } = {}){
+    if (!equipo && !CLIENTES.length){
       alert('Añade primero un cliente en la pestaña Clientes.');
       return;
     }
+    const rDepInicial = equipo ? 'todos' : DEPARTAMENTO;
     const clientesOpts = CLIENTES.map(c => `<option value="${c.id}" ${c.id === clienteIdPre ? 'selected' : ''}>${c.nombre}</option>`).join('');
     const overlay = showModal(`
-      <h3>Nueva reunión</h3>
-      <div class="field"><label>Cliente</label><select id="rCliente">${clientesOpts}</select></div>
+      <h3>${equipo ? 'Nueva reunión de equipo' : 'Nueva reunión'}</h3>
+      ${equipo
+        ? `<div class="field"><label>Título</label><input id="rTitulo" placeholder="Ej: Planificación semanal"></div>`
+        : `<div class="field"><label>Cliente</label><select id="rCliente">${clientesOpts}</select></div>`}
       <div class="field-row">
         <div class="field"><label>Fecha</label><input type="date" id="rFecha" value="${fechaPre || hoyLocalISO()}"></div>
         <div class="field"><label>Hora (opcional)</label><input type="time" id="rHora"></div>
       </div>
       <div class="field"><label>¿Para quién es? <small style="text-transform:none; letter-spacing:0;">(se les avisa)</small></label>
         <div class="chip-grid" id="rDepGrid">
-          ${Object.keys(DEP_LABEL).map(d => `<div class="chip dep-${d} ${d === DEPARTAMENTO ? 'active' : ''}" data-val="${d}"><span class="dep-dot"></span>${DEP_LABEL[d]}</div>`).join('')}
+          ${Object.keys(DEP_LABEL).map(d => `<div class="chip dep-${d} ${d === rDepInicial ? 'active' : ''}" data-val="${d}"><span class="dep-dot"></span>${DEP_LABEL[d]}</div>`).join('')}
         </div>
       </div>
 
-      <div class="form-section" style="${esDireccion() ? '' : 'display:none;'}">
+      <div class="form-section" style="${esDireccion() && !equipo ? '' : 'display:none;'}">
         <div class="form-section-title">💰 ¿Qué se ha vendido? <small>(opcional)</small></div>
         <div class="chip-grid" id="rProductoGrid"></div>
         <div class="field" id="rRedesField" style="display:none;">
@@ -926,7 +935,7 @@
 
     let rProductoId = null;
     let rRedesVideos = null;
-    let rDepartamento = DEPARTAMENTO;
+    let rDepartamento = rDepInicial;
 
     document.querySelectorAll('#rDepGrid .chip').forEach(chip => {
       chip.addEventListener('click', () => {
@@ -1009,12 +1018,14 @@
 
     document.getElementById('rCancelar').addEventListener('click', () => overlay.remove());
     document.getElementById('rGuardar').addEventListener('click', async () => {
-      const cliente_id = document.getElementById('rCliente').value;
+      const cliente_id = equipo ? null : document.getElementById('rCliente').value;
+      const titulo = equipo ? document.getElementById('rTitulo').value.trim() : null;
       const fecha = document.getElementById('rFecha').value;
       const hora = document.getElementById('rHora').value || null;
       const resumen = document.getElementById('rResumen').value.trim() || null;
       const acordado = document.getElementById('rAcordado').value.trim() || null;
-      if (!cliente_id) return alert('Elige un cliente');
+      if (!equipo && !cliente_id) return alert('Elige un cliente');
+      if (equipo && !titulo) return alert('Ponle un título a la reunión');
       if (!fecha) return alert('Pon la fecha de la reunión');
 
       const producto = PRODUCTOS.find(p => p.id === rProductoId);
@@ -1040,7 +1051,7 @@
       const btn = document.getElementById('rGuardar');
       btn.disabled = true; btn.textContent = 'Guardando…';
       const { error } = await sb.from('reuniones').insert({
-        cliente_id, fecha, hora, resumen, acordado, departamento: rDepartamento, creado_por_user_id: SOCIO_ID,
+        cliente_id, titulo, fecha, hora, resumen, acordado, departamento: rDepartamento, creado_por_user_id: SOCIO_ID,
         producto_vendido: productoVendidoLabel, precio_vendido: precioVendido, venta_id: ventaId,
       });
       btn.disabled = false; btn.textContent = 'Guardar reunión';
