@@ -24,6 +24,7 @@
   header{ position:sticky; top:0; z-index:20; background:rgba(20,17,13,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); padding:16px 20px; display:flex; align-items:center; justify-content:space-between; }
   .brand{ display:flex; align-items:center; gap:8px; font-family:var(--mono); font-weight:800; font-size:14px; color:var(--slate); }
   .brand svg{ width:20px; height:20px; }
+  .brand img{ width:20px; height:20px; display:block; }
   .edit-toggle{
     display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:12px; font-weight:700;
     padding:8px 14px; border-radius:20px; border:1px solid var(--line); background:var(--ink-soft); color:var(--paper-dim);
@@ -88,7 +89,7 @@
 
 <header>
   <div class="brand">
-    <svg viewBox="0 0 400 400"><rect width="400" height="400" rx="72" fill="#14110D"/><line x1="108" y1="108" x2="292" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><line x1="292" y1="108" x2="108" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><circle cx="108" cy="108" r="27" fill="#C6703C"/><circle cx="292" cy="108" r="27" fill="#C6703C"/><circle cx="108" cy="292" r="27" fill="#C6703C"/><circle cx="292" cy="292" r="27" fill="#C6703C"/><circle cx="200" cy="200" r="33" fill="#C6703C"/></svg>
+    <img src="assets/nav-logo.png" alt="Nexus">
     nexus · menú digital
   </div>
   <button class="edit-toggle" id="editToggle">

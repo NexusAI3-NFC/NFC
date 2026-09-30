@@ -37,6 +37,7 @@
   }
   .topbar .brand{ display:flex; align-items:center; gap:9px; font-family:var(--mono); font-weight:800; font-size:16px; }
   .topbar svg{ width:24px; height:24px; }
+  .topbar .brand img{ width:24px; height:24px; display:block; }
   .topbar .brand small{ display:block; font-family:var(--sans); font-weight:500; font-size:10.5px; color:var(--slate); letter-spacing:.02em; }
   .whoami{
     font-family:var(--mono); font-size:11.5px; color:var(--gold); background:rgba(232,185,61,0.12);
@@ -215,6 +216,7 @@
   .footer-inner{ max-width:1120px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
   .footer-brand{ display:flex; align-items:center; gap:8px; font-family:var(--mono); font-weight:800; font-size:13.5px; }
   .footer-brand svg{ width:18px; height:18px; }
+  .footer-brand img{ width:18px; height:18px; display:block; }
   footer .footer-note{ font-size:11.5px; color:var(--slate); }
 
   /* ---------- modal ---------- */
@@ -271,7 +273,7 @@
 
 <header class="topbar">
   <div class="brand">
-    <svg viewBox="0 0 400 400"><rect width="400" height="400" rx="72" fill="#14110D"/><line x1="108" y1="108" x2="292" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><line x1="292" y1="108" x2="108" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><circle cx="108" cy="108" r="27" fill="#C6703C"/><circle cx="292" cy="108" r="27" fill="#C6703C"/><circle cx="108" cy="292" r="27" fill="#C6703C"/><circle cx="292" cy="292" r="27" fill="#C6703C"/><circle cx="200" cy="200" r="33" fill="#C6703C"/></svg>
+    <img src="assets/nav-logo.png" alt="Nexus">
     <div>Nexus<small>Catálogo NFC</small></div>
   </div>
   <span class="whoami">✨ Pide en un toque</span>
@@ -365,7 +367,7 @@
 <footer>
   <div class="footer-inner">
     <div class="footer-brand">
-      <svg viewBox="0 0 400 400"><rect width="400" height="400" rx="72" fill="#14110D"/><line x1="108" y1="108" x2="292" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><line x1="292" y1="108" x2="108" y2="292" stroke="#C6703C" stroke-width="42" stroke-linecap="round"/><circle cx="108" cy="108" r="27" fill="#C6703C"/><circle cx="292" cy="108" r="27" fill="#C6703C"/><circle cx="108" cy="292" r="27" fill="#C6703C"/><circle cx="292" cy="292" r="27" fill="#C6703C"/><circle cx="200" cy="200" r="33" fill="#C6703C"/></svg>
+      <img src="assets/nav-logo.png" alt="Nexus">
       Nexus NFC
     </div>
     <div class="footer-note" id="footerNote">Soluciones de contacto sin contacto para tu negocio.</div>
