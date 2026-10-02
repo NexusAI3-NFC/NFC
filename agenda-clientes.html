@@ -220,6 +220,15 @@
     display:block; margin-top:10px; background:none; border:none; padding:0;
     font-size:12px; font-weight:600; color:var(--bad); text-decoration:underline; text-underline-offset:2px;
   }
+  .item-acciones{ display:flex; gap:18px; align-items:center; margin-top:10px; }
+  .item-acciones .btn-cancelar-reunion{ margin-top:0; }
+  .btn-editar-item{
+    background:none; border:none; padding:0;
+    font-size:12px; font-weight:600; color:var(--paper); text-decoration:underline; text-underline-offset:2px;
+  }
+  .tarea-edit{ width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--slate); background:none; border:none; }
+  .tarea-edit:active{ background:rgba(31,158,140,0.15); color:var(--teal); }
+  .tarea-edit svg{ width:14px; height:14px; }
 
   .detail-actions{ display:flex; gap:8px; margin-top:14px; margin-bottom:18px; flex-wrap:wrap; }
   .detail-actions button{ flex:1; min-width:140px; }
@@ -517,6 +526,9 @@
               </div>
             </div>
             <div class="tarea-right">
+              <button class="tarea-edit" data-id="${t.id}" aria-label="Editar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              </button>
               <button class="tarea-del" data-id="${t.id}" aria-label="Borrar">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>
               </button>
@@ -530,6 +542,9 @@
 
     list.querySelectorAll('.tarea-check').forEach(cb => {
       cb.addEventListener('change', () => marcarTareaHecha(cb));
+    });
+    list.querySelectorAll('.tarea-edit').forEach(btn => {
+      btn.addEventListener('click', () => abrirFormTarea(TAREAS.find(t => String(t.id) === btn.dataset.id)));
     });
     list.querySelectorAll('.tarea-del').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -555,6 +570,89 @@
       .eq('id', cb.dataset.id);
     if (error){ alert('Error: ' + error.message); cb.checked = !hecha; return; }
     cargarTodo();
+  }
+
+  // Para meter valores guardados dentro de atributos/textarea de los formularios.
+  const escAttr = s => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
+  // Editar una tarea ya creada: título, descripción, para quién, fecha límite y estado.
+  function abrirFormTarea(t){
+    if (!t) return;
+    // Personas actuales: por user_id si los hay; si no (tareas antiguas), por nombre.
+    const idsActuales = new Set((t.asignados_user_ids && t.asignados_user_ids.length)
+      ? t.asignados_user_ids
+      : SOCIOS_LIST.filter(s => nombresAsignados(t).includes(s.nombre)).map(s => s.user_id));
+    let estadoSel = t.estado === 'en_progreso' ? 'en_progreso' : 'pendiente';
+
+    const overlay = showModal(`
+      <h3>Editar tarea</h3>
+      <div class="field"><label>Título</label><input type="text" id="etTitulo" value="${escAttr(t.titulo || t.descripcion || '')}"></div>
+      <div class="field"><label>Descripción (opcional)</label><textarea id="etDesc" placeholder="Detalles">${escAttr(t.titulo ? (t.descripcion || '') : '')}</textarea></div>
+      <div class="field"><label>Para quién <small style="text-transform:none; letter-spacing:0;">(puedes elegir varias)</small></label>
+        <div class="chip-grid" id="etAsignadoGrid">
+          ${SOCIOS_LIST.map(s => `<div class="chip dep-${depDe(s)} ${idsActuales.has(s.user_id) ? 'active' : ''}" data-val="${s.user_id}"><span class="dep-dot"></span>${s.nombre}</div>`).join('')}
+        </div>
+      </div>
+      <div class="field"><label>Fecha límite (opcional)</label><input type="date" id="etFechaLimite" value="${t.fecha_limite || ''}"></div>
+      ${t.hecha ? '' : `<div class="field"><label>Estado</label>
+        <div class="chip-grid" id="etEstadoGrid">
+          <div class="chip ${estadoSel === 'pendiente' ? 'active' : ''}" data-val="pendiente">Pendiente</div>
+          <div class="chip ${estadoSel === 'en_progreso' ? 'active' : ''}" data-val="en_progreso">En progreso</div>
+        </div>
+      </div>`}
+      <button class="btn-submit teal" id="etGuardar">Guardar cambios</button>
+      <button class="btn-submit ghost" id="etCancelar" style="margin-top:8px;">Cancelar</button>
+    `);
+
+    const asignadosSel = new Set(idsActuales);
+    overlay.querySelectorAll('#etAsignadoGrid .chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        chip.classList.toggle('active');
+        if (chip.classList.contains('active')) asignadosSel.add(chip.dataset.val);
+        else asignadosSel.delete(chip.dataset.val);
+      });
+    });
+    overlay.querySelectorAll('#etEstadoGrid .chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        overlay.querySelectorAll('#etEstadoGrid .chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        estadoSel = chip.dataset.val;
+      });
+    });
+
+    document.getElementById('etCancelar').addEventListener('click', () => overlay.remove());
+    document.getElementById('etGuardar').addEventListener('click', async () => {
+      const titulo = document.getElementById('etTitulo').value.trim();
+      const descripcion = document.getElementById('etDesc').value.trim();
+      const fechaLimite = document.getElementById('etFechaLimite').value || null;
+      if (!titulo) return alert('Escribe un título para la tarea');
+      const asignados = SOCIOS_LIST.filter(s => asignadosSel.has(s.user_id));
+      if (!asignados.length) return alert('Di para quién es la tarea');
+      // Mismo criterio que al crearla: el departamento de las personas
+      // asignadas si todas son del mismo; si se mezclan, se mantiene el que tenía.
+      const deps = new Set(asignados.map(s => s.departamento || 'direccion'));
+      const departamento = deps.size === 1 ? [...deps][0] : depDe(t);
+
+      const payload = {
+        titulo, descripcion: descripcion || null,
+        asignado_a: asignados.map(s => s.nombre).join(', '),
+        asignado_a_user_id: asignados[0].user_id,
+        asignados_user_ids: asignados.map(s => s.user_id),
+        fecha_limite: fechaLimite,
+        departamento,
+      };
+      if (!t.hecha) payload.estado = estadoSel;
+      // Si cambia la fecha límite, que vuelva a avisar cuando llegue la nueva.
+      if (fechaLimite !== (t.fecha_limite || null)) payload.aviso_limite_enviado = false;
+
+      const btn = document.getElementById('etGuardar');
+      btn.disabled = true; btn.textContent = 'Guardando…';
+      const { error } = await sb.from('tareas').update(payload).eq('id', t.id);
+      btn.disabled = false; btn.textContent = 'Guardar cambios';
+      if (error){ alert('Error al guardar: ' + error.message); return; }
+      overlay.remove();
+      await cargarTodo();
+    });
   }
 
   document.getElementById('tareaSubmit').addEventListener('click', async () => {
@@ -699,10 +797,17 @@
           </div>
           ${t.titulo && t.descripcion ? `<div class="reunion-txt">${t.descripcion}</div>` : ''}
           <div class="reunion-txt"><b>Para:</b> ${t.asignado_a}${t.hecha ? ' · hecha' : (t.estado === 'en_progreso' ? ' · en progreso' : ' · pendiente')}</div>
+          <div class="item-acciones"><button class="btn-editar-item btn-editar-tarea" data-id="${t.id}">Editar tarea</button></div>
         </div>`).join('')
       : '';
     document.querySelectorAll('#diaReuniones .btn-cancelar-reunion').forEach(btn => {
       btn.addEventListener('click', () => cancelarReunion(btn.dataset.id));
+    });
+    document.querySelectorAll('#diaReuniones .btn-editar-reunion').forEach(btn => {
+      btn.addEventListener('click', () => editarReunion(btn.dataset.id));
+    });
+    document.querySelectorAll('#diaTareas .btn-editar-tarea').forEach(btn => {
+      btn.addEventListener('click', () => abrirFormTarea(TAREAS.find(t => String(t.id) === btn.dataset.id)));
     });
     document.querySelectorAll('#diaTareas .tarea-check').forEach(cb => {
       cb.addEventListener('change', () => marcarTareaHecha(cb));
@@ -733,8 +838,16 @@
         ${r.producto_vendido && esDireccion() ? `<div class="reunion-txt">💰 <b>Vendido:</b> ${r.producto_vendido} — ${money(r.precio_vendido)}</div>` : ''}
         ${r.resumen ? `<div class="reunion-txt"><b>Resumen:</b> ${r.resumen}</div>` : ''}
         ${r.acordado ? `<div class="reunion-txt"><b>Acordado:</b> ${r.acordado}</div>` : ''}
-        <button class="btn-cancelar-reunion" data-id="${r.id}">Cancelar reunión</button>
+        <div class="item-acciones">
+          <button class="btn-editar-item btn-editar-reunion" data-id="${r.id}">Editar reunión</button>
+          <button class="btn-cancelar-reunion" data-id="${r.id}">Cancelar reunión</button>
+        </div>
       </div>`;
+  }
+
+  function editarReunion(reunionId){
+    const r = REUNIONES.find(x => String(x.id) === String(reunionId));
+    if (r) abrirFormReunion(r.cliente_id, r.fecha, { equipo: !r.cliente_id, reunion: r });
   }
 
   // =====================================================================
@@ -805,6 +918,9 @@
     document.getElementById('btnEliminarCliente').addEventListener('click', () => eliminarCliente(cliente));
     document.querySelectorAll('#clienteReunionesList .btn-cancelar-reunion').forEach(btn => {
       btn.addEventListener('click', () => cancelarReunion(btn.dataset.id));
+    });
+    document.querySelectorAll('#clienteReunionesList .btn-editar-reunion').forEach(btn => {
+      btn.addEventListener('click', () => editarReunion(btn.dataset.id));
     });
 
     if (abrirPanel) document.getElementById('clienteWrap').classList.add('is-open');
@@ -887,21 +1003,26 @@
   const tituloReunion = r => r.clientes_crm?.nombre || (r.titulo ? '👥 ' + r.titulo : '👥 Reunión de equipo');
 
   // opts.equipo: reunión interna, sin cliente ni venta.
-  function abrirFormReunion(clienteIdPre, fechaPre, { equipo = false } = {}){
+  // opts.reunion: reunión ya guardada → el formulario la edita en vez de crear otra.
+  function abrirFormReunion(clienteIdPre, fechaPre, { equipo = false, reunion = null } = {}){
+    const editando = !!reunion;
     if (!equipo && !CLIENTES.length){
       alert('Añade primero un cliente en la pestaña Clientes.');
       return;
     }
-    const rDepInicial = equipo ? 'todos' : DEPARTAMENTO;
+    const rDepInicial = editando ? depDe(reunion) : (equipo ? 'todos' : DEPARTAMENTO);
     const clientesOpts = CLIENTES.map(c => `<option value="${c.id}" ${c.id === clienteIdPre ? 'selected' : ''}>${c.nombre}</option>`).join('');
+    const titulo = editando
+      ? (equipo ? 'Editar reunión de equipo' : 'Editar reunión')
+      : (equipo ? 'Nueva reunión de equipo' : 'Nueva reunión');
     const overlay = showModal(`
-      <h3>${equipo ? 'Nueva reunión de equipo' : 'Nueva reunión'}</h3>
+      <h3>${titulo}</h3>
       ${equipo
-        ? `<div class="field"><label>Título</label><input id="rTitulo" placeholder="Ej: Planificación semanal"></div>`
+        ? `<div class="field"><label>Título</label><input id="rTitulo" placeholder="Ej: Planificación semanal" value="${escAttr(reunion?.titulo)}"></div>`
         : `<div class="field"><label>Cliente</label><select id="rCliente">${clientesOpts}</select></div>`}
       <div class="field-row">
         <div class="field"><label>Fecha</label><input type="date" id="rFecha" value="${fechaPre || hoyLocalISO()}"></div>
-        <div class="field"><label>Hora (opcional)</label><input type="time" id="rHora"></div>
+        <div class="field"><label>Hora (opcional)</label><input type="time" id="rHora" value="${reunion?.hora ? reunion.hora.slice(0, 5) : ''}"></div>
       </div>
       <div class="field"><label>¿Para quién es? <small style="text-transform:none; letter-spacing:0;">(se les avisa)</small></label>
         <div class="chip-grid" id="rDepGrid">
@@ -909,7 +1030,8 @@
         </div>
       </div>
 
-      <div class="form-section" style="${esDireccion() && !equipo ? '' : 'display:none;'}">
+      ${editando && reunion.producto_vendido && esDireccion() ? `<div class="reunion-txt" style="margin-bottom:14px;">💰 <b>Vendido:</b> ${reunion.producto_vendido} — ${money(reunion.precio_vendido)} <small>(la venta ya está registrada y no se cambia desde aquí)</small></div>` : ''}
+      <div class="form-section" style="${esDireccion() && !equipo && !editando ? '' : 'display:none;'}">
         <div class="form-section-title">💰 ¿Qué se ha vendido? <small>(opcional)</small></div>
         <div class="chip-grid" id="rProductoGrid"></div>
         <div class="field" id="rRedesField" style="display:none;">
@@ -926,11 +1048,11 @@
 
       <div class="form-section">
         <div class="form-section-title">🤝 Qué os habéis dicho</div>
-        <div class="field"><label>Resumen de la reunión</label><textarea id="rResumen" placeholder="De qué habéis hablado"></textarea></div>
-        <div class="field"><label>Qué se acordó</label><textarea id="rAcordado" placeholder="Compromisos, próximos pasos…"></textarea></div>
+        <div class="field"><label>Resumen de la reunión</label><textarea id="rResumen" placeholder="De qué habéis hablado">${escAttr(reunion?.resumen)}</textarea></div>
+        <div class="field"><label>Qué se acordó</label><textarea id="rAcordado" placeholder="Compromisos, próximos pasos…">${escAttr(reunion?.acordado)}</textarea></div>
       </div>
 
-      <button class="btn-submit teal" id="rGuardar">Guardar reunión</button>
+      <button class="btn-submit teal" id="rGuardar">${editando ? 'Guardar cambios' : 'Guardar reunión'}</button>
       <button class="btn-submit ghost" id="rCancelar" style="margin-top:8px;">Cancelar</button>
     `);
 
@@ -1028,6 +1150,20 @@
       if (!equipo && !cliente_id) return alert('Elige un cliente');
       if (equipo && !titulo) return alert('Ponle un título a la reunión');
       if (!fecha) return alert('Pon la fecha de la reunión');
+
+      if (editando){
+        // Lo vendido no se toca al editar: la venta ya existe en `ventas`.
+        const btn = document.getElementById('rGuardar');
+        btn.disabled = true; btn.textContent = 'Guardando…';
+        const { error } = await sb.from('reuniones')
+          .update({ cliente_id, titulo, fecha, hora, resumen, acordado, departamento: rDepartamento })
+          .eq('id', reunion.id);
+        btn.disabled = false; btn.textContent = 'Guardar cambios';
+        if (error){ alert('Error: ' + error.message); return; }
+        overlay.remove();
+        await cargarTodo();
+        return;
+      }
 
       const producto = PRODUCTOS.find(p => p.id === rProductoId);
       let productoVendidoLabel = null, precioVendido = null, ventaId = null;
